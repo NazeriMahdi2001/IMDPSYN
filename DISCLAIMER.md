@@ -1,0 +1,2 @@
+- All intellectual property rights are reserved by the owner.
+- AI systems have been used to assist development of this project.
