@@ -4,6 +4,7 @@
 import numpy as np
 import itertools
 from source.commons import floor_decimal
+from source.tabulate_scenario import create_table
 
 def computeRegionIdx(points, lb, ub, regions_per_dimension, size_per_region, ubBorderInside=True):
     '''
@@ -43,7 +44,7 @@ def computeRegionIdx(points, lb, ub, regions_per_dimension, size_per_region, ubB
     return indices, indices_nonneg
 
 
-def compute_intervals(Nsamples, confidence, partition, clusters, probability_table, debug=False):
+def compute_intervals(Nsamples, inverse_confidence, partition, clusters, probability_table, debug=False):
     '''
     Compute the probability intervals P(s,a,s') for a given pair (s,a) and for all successor states s'.
     '''
@@ -65,7 +66,7 @@ def compute_intervals(Nsamples, confidence, partition, clusters, probability_tab
 
     # Epsilon for Hoeffding's inequality
     epsilon = np.sqrt(1 / (2 * Nsamples) * np.log(
-        2 / confidence))
+        2 / inverse_confidence))
 
     counts_goal_lb = 0
     counts_goal_ub = 0
@@ -279,6 +280,16 @@ if __name__ == "__main__":
     # probability, and the second column the upper bound.
     probability_table = np.zeros((N+1, 2))
 
-    output = compute_intervals(Nsamples=N, confidence=0.99, partition=partition, clusters=clusters, probability_table=probability_table, debug=True)
+    # We specify the probability with which a probability interval is wrong (i.e., 1 minus the confidence probability)
+    inverse_confidence = 0.01
+
+    P_low, P_upp = create_table(N=N, beta=inverse_confidence, kstep=1, trials=0, export=False)
+    probability_table = np.column_stack((P_low, P_upp))
+
+    '''
+    The `compute_intervals` function computes the transition probability intervals for a specific state-action pair. Thus, to generate the whole abstraction, we need to call this
+    function once for every state-action pair (or, if the action outcome is independent of the origin state, then only for every action).
+    '''
+    output = compute_intervals(Nsamples=N, inverse_confidence=inverse_confidence, partition=partition, clusters=clusters, probability_table=probability_table, debug=True)
 
     print(output)
