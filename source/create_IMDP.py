@@ -7,7 +7,7 @@ from progressbar import progressbar
 
 
 class mdp(object):
-    def __init__(self, setup, N, partition, actions, blref=False):
+    def __init__(self, setup, timebound, partition, actions):
         '''
         Create the MDP model in Python for the current instance.
 
@@ -15,13 +15,12 @@ class mdp(object):
         ----------
         setup : dict
             Setup dictionary.
-        N : int
+        timebound : int
             Finite time horizon.
         partition : dict
             Partition dictionary
         actions : dict
             Action dictionary
-        blref : bool, optional
 
         Returns
         -------
@@ -29,22 +28,13 @@ class mdp(object):
 
         '''
 
-        self.improved_synthesis = blref
-
         self.setup = setup
-        self.N = N
+        self.timebound = timebound
 
         self.nr_regions = partition['nr_regions']
         self.nr_actions = actions['nr_actions']
-        self.nr_states = self.nr_regions
 
-        # Specify goal state set
-        self.goodStates = partition['goal']
-
-        # Specify sets that can never reach target set
-        self.badStates = partition['critical']
-
-    def writePRISM_specification(self, mode, problem_type):
+    def writePRISM_specification(self, mode='interval', problem_type='reachavoid'):
         '''
         Write the PRISM specification to a file
 
@@ -64,8 +54,8 @@ class mdp(object):
 
         '''
 
-        if self.N != np.inf:
-            timebound = 'F<=' + str(self.N) + ' '
+        if self.timebound != np.inf:
+            timebound = 'F<=' + str(self.timebound) + ' '
         else:
             timebound = 'F '
 
@@ -92,8 +82,7 @@ class mdp(object):
 
         return specfile, specification
 
-    def writePRISM_explicit(self, actions, partition, trans, problem_type, mode='estimate',
-                            verbose=False):
+    def writePRISM_explicit(self, actions, partition, probabilities, problem_type, mode='estimate', verbose=False):
         '''
         Converts the model to the PRISM language, and write the model in
         explicit form to files (meaning that every transition is already
@@ -105,7 +94,7 @@ class mdp(object):
             All action objectives
         partition : dict
             Partition object
-        trans : dict
+        probabilities : dict
             Contains transition probability intervals
         problem_type : str
             Is either 'avoid' or 'reachavoid'
@@ -128,12 +117,7 @@ class mdp(object):
 
         head = 3
 
-        if self.improved_synthesis:
-            blref_states = self.improved_synthesis.num_states
-        else:
-            blref_states = 0
-
-        self.head_size = head + blref_states
+        self.head_size = head
 
         ### Write states file
         PRISM_statefile = self.setup.directories['outputFcase'] + \
@@ -144,11 +128,9 @@ class mdp(object):
 
         state_file_header = ['0:(' + ','.join([str(-3)] * len(partition['state_variables'])) + ')',
                              '1:(' + ','.join([str(-2)] * len(partition['state_variables'])) + ')',
-                             '2:(' + ','.join([str(-1)] * len(partition['state_variables'])) + ')'] + \
-                            [str(i + head) + ':(' + ','.join([str(-i - head - 1)] * len(partition['state_variables'])) + ')'
-                             for i in range(blref_states)]  # If improved synthesis is enabled, then append block refinement states.
+                             '2:(' + ','.join([str(-1)] * len(partition['state_variables'])) + ')']
 
-        state_file_content = [str(i + head + blref_states) + ':' + str(partition['R']['idx_inv'][i]).replace(' ', '')
+        state_file_content = [str(i + head) + ':' + str(partition['R']['idx_inv'][i]).replace(' ', '')
                               for i in range(self.nr_regions)]
 
         state_file_string = '\n'.join(state_var_string + state_file_header + state_file_content)
@@ -163,23 +145,22 @@ class mdp(object):
                           self.setup.mdp['filename'] + "_" + mode + ".lab"
 
         label_head = ['0="init" 1="deadlock" 2="reached" 3="failed"'] + \
-                     ['0: 1 3'] + ['1: 1 3'] + ['2: 2'] + \
-                     [str(i + head) + ': 0' for i in range(blref_states)]
+                     ['0: 1 3'] + ['1: 1 3'] + ['2: 2']
 
         label_body = ['' for i in range(self.nr_regions)]
 
         for i in range(self.nr_regions):
 
-            substring = str(i + head + blref_states) + ': 0'
+            substring = str(i + head) + ': 0'
 
             # Check if region is a deadlock state
             if len(actions['enabled'][i]) == 0:
                 substring += ' 1'
 
             # Check if region is in goal set
-            if i in self.goodStates:
+            if partition['idx2tup'][i] in partition['goal_idx']:
                 substring += ' 2'
-            elif i in self.badStates:
+            elif partition['idx2tup'][i] in partition['unsafe_idx']:
                 substring += ' 3'
 
             label_body[i] = substring
@@ -205,10 +186,10 @@ class mdp(object):
         # For every state
         for s in progressbar(range(self.nr_regions), redirect_stdout=True):
 
-            if s in partition['goal']:
+            if partition['idx2tup'][s] in partition['goal_idx']:
                 # print(' ---- Skip',s,'because it is a goal region')
                 continue
-            if s in partition['critical']:
+            if partition['idx2tup'][s] in partition['unsafe_idx']:
                 # print(' ---- Skip',s,'because it is a critical region')
                 continue
 
@@ -226,20 +207,17 @@ class mdp(object):
                 # For every enabled action
                 for a_idx, a in enumerate(actions['enabled'][s]):
 
-                    if self.improved_synthesis and trans['ignore'][a]:
-                        continue
-
                     # Define name of action
                     actionLabel = "a_" + str(a)
 
-                    substring_start = str(s + head + blref_states) + ' ' + str(choice)
+                    substring_start = str(s + head) + ' ' + str(choice)
 
-                    P = trans['prob'][a]
+                    P = probabilities[a]
 
                     if mode == 'interval':
 
                         # Add probability to end in absorbing state
-                        deadlock_string = P['deadlock_interval_string']
+                        deadlock_string = P['outOfPartition_interval_string']
 
                         # Retreive probability intervals (and
                         # corresponding state ID's)
@@ -259,7 +237,7 @@ class mdp(object):
                     else:
 
                         # Add probability to end in absorbing state
-                        deadlock_string = str(P['deadlock_approx'])
+                        deadlock_string = str(P['outOfPartition_approx'])
 
                         # Retreive probability intervals (and
                         # corresponding state ID's)
@@ -297,7 +275,7 @@ class mdp(object):
                     else:
                         selfloop_prob = '1.0'
 
-                    substring = [str(s + head + blref_states) + ' 0 ' + str(s + head + blref_states) + ' ' +
+                    substring = [str(s + head) + ' 0 ' + str(s + head) + ' ' +
                                  selfloop_prob]
 
                     selfloop = True
@@ -316,24 +294,12 @@ class mdp(object):
                              for item in sublist]
         transition_file_list = '\n'.join(flatten(transition_file_list))
 
-        ### Add block refinement states
-        blref_transitions = ''
-        blref_trans = 0
-        if self.improved_synthesis:
-            for i, val in enumerate(self.improved_synthesis.lb_values):
-                if val < 1:
-                    blref_transitions += str(i + head) + ' 0 1 [' + str(1 - val) + ',' + str(1 - val) + ']\n'
-                    blref_trans += 1
-                if val > 0:
-                    blref_transitions += str(i + head) + ' 0 2 [' + str(val) + ',' + str(val) + ']\n'
-                    blref_trans += 1
-
         print(' ---- String ready; write to file...')
 
         # Header contains nr of states, choices, and transitions
-        size_states = self.nr_regions + head + blref_states
-        size_choices = nr_choices_absolute + head + blref_states
-        size_transitions = nr_transitions_absolute + head + blref_trans
+        size_states = self.nr_regions + head
+        size_choices = nr_choices_absolute + head
+        size_transitions = nr_transitions_absolute + head
         model_size = {'States': size_states,
                       'Choices': size_choices,
                       'Transitions': size_transitions}
@@ -353,9 +319,7 @@ class mdp(object):
         ###
 
         # Write content to file
-        writeFile(PRISM_transitionfile, 'w', header + firstrow +
-                  blref_transitions +
-                  transition_file_list)
+        writeFile(PRISM_transitionfile, 'w', header + firstrow + transition_file_list)
 
         ### Write specification file
         specfile, specification = self.writePRISM_specification(mode, problem_type)

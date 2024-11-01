@@ -244,24 +244,25 @@ def compute_intervals(Nsamples, inverse_confidence, partition, clusters, probabi
 if __name__ == "__main__":
 
     #Clusters` is a dictionary containing the relevant information of the samples
+    w = np.array([
+        [0.5, 0.3],
+        [0.2, 0.1],
+        [-0.1, 0]
+    ])
+    target_lb = np.array([0, 0])
+    target_ub = np.array([1, 1])
+
     clusters = {
-        'lb': np.array([
-            [0.5, 0.3],
-            [1.3, 1.8],
-            [-1.2, -0.9]
-        ]),
-        'ub': np.array([
-            [1.2, 1.5],
-            [1.5, 2.0],
-            [-0.9, -0.8]
-        ]),
-        'value': np.array([1,3,2])
+        'lb': w + target_lb,
+        'ub': w + target_ub,
+        'value': np.array([1,1,1])
     }
 
     # Total number of noise samples is the sum of the cluster values (each cluster may represent multiple samples)
     N = np.sum(clusters['value'])
 
     partition = {
+        'state_variables': ['x','y'],
         'dim': 2,
         'lb': np.array([-1,-1], dtype=int),
         'ub': np.array([3,2], dtype=int),
@@ -275,6 +276,7 @@ if __name__ == "__main__":
     iterator = itertools.product(*map(range, np.zeros(partition['dim'], dtype=int), partition['regions_per_dimension'] + 1))
     partition['tup2idx'] = {tup: idx for idx,tup in enumerate(iterator)}
     partition['idx2tup'] = {tup: idx for idx, tup in enumerate(iterator)}
+    partition['nr_regions'] = len(partition['tup2idx'])
 
     # The probability table is an N+1 x 2 table, with N the number of samples. The first column contains the lower bound
     # probability, and the second column the upper bound.
