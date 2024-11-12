@@ -2,6 +2,11 @@ import numpy as np
 import configparser, ast
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import itertools
+from source.commons import floor_decimal
+from source.tabulate_scenario import create_table
+from source.compute_probabilities import compute_intervals
+from source.commons import writeFile
 
 class Abstraction:
     def __init__(self, dynamics, config_file):
@@ -41,6 +46,8 @@ class Abstraction:
 
         # Number of abstract cells in each dimension
         self.absDimension = np.ceil((self.stateUpperBound - self.stateLowerBound) / self.stateResolution).astype(int)
+
+        self.numNoiseSamples= int(config['DEFAULT']['numNoiseSamples'])
 
     def find_abs_state(self, state):
         # Find the abstract state of a continuous state
@@ -114,6 +121,10 @@ class Abstraction:
         print("Samples are generated")
 
     def find_actions(self):
+        self.actions = np.empty(self.absDimension, dtype=object)
+        for index, _ in np.ndenumerate(self.actions):
+            self.actions[index] = []
+
         half_resolution = np.array(self.stateResolution) / (self.numDivisions * 2)
         state_linspaces = [np.linspace(lower, upper, self.numDivisions, endpoint=True) for lower, upper in zip(half_resolution, self.stateResolution - half_resolution)]
         state_grid = np.moveaxis(np.meshgrid(*state_linspaces, copy=False), 0, -1)
@@ -151,9 +162,9 @@ class Abstraction:
                 
 
                 if np.min(target_size) > 0:
-                    print(f'For every continuous state in {np.array(pre_state_index)}, these exist a control input such that the next state of the nominal system is inside target set of abstract state {abs_state_index}')
-                    print(f'i = {np.array(pre_state_index)}, j = {np.array(abs_state_index)}, c_i = {np.array(pre_state_lower_bound)} to {np.array(pre_state_upper_bound)}, c_j = {np.array(abs_state_lower_bound)} to {np.array(abs_state_upper_bound)}, t_i_to_j = {np.array(abs_state_lower_bound + np.min(target_size, axis=0))} to {np.array(abs_state_upper_bound) - np.min(target_size, axis=0)}')
-                
+                    #print(f'For every continuous state in {np.array(pre_state_index)}, these exist a control input such that the next state of the nominal system is inside target set of abstract state {abs_state_index}')
+                    #print(f'i = {np.array(pre_state_index)}, j = {np.array(abs_state_index)}, c_i = {np.array(pre_state_lower_bound)} to {np.array(pre_state_upper_bound)}, c_j = {np.array(abs_state_lower_bound)} to {np.array(abs_state_upper_bound)}, t_i_to_j = {np.array(abs_state_lower_bound + np.min(target_size, axis=0))} to {np.array(abs_state_upper_bound) - np.min(target_size, axis=0)}')
+                    self.actions[pre_state_index].append([pre_state_index, abs_state_index, abs_state_lower_bound + np.min(target_size, axis=0), abs_state_upper_bound - np.min(target_size, axis=0)])
                 # plt.figure()
                 # freedom_grid = target_size[:, 0].reshape((self.numDivisions, self.numDivisions))
                 # plt.imshow(freedom_grid, extent=(pre_state_lower_bound[0], pre_state_upper_bound[0], pre_state_lower_bound[1], pre_state_upper_bound[1]), origin='lower', cmap='viridis', alpha=0.6)
@@ -162,3 +173,178 @@ class Abstraction:
                 # plt.ylabel('State Dimension 2')
                 # plt.title(f'Freedom for transition from {pre_state_index} to {abs_state_index}')
                 # plt.savefig(f'plot{pre_state_index}{abs_state_index}.png', dpi=500)
+
+    def generate_noise_samples(self, noiseAmplitude=0.1):
+        self.noise_samples = np.random.uniform(np.zeros(self.stateDimension), self.stateResolution*noiseAmplitude, (self.numNoiseSamples, self.stateDimension))
+
+    def find_transitions(self):
+        self.partition = {
+            'state_variables': ['x','y'],
+            'dim': self.stateDimension,
+            'lb': self.stateLowerBound,
+            'ub': self.stateUpperBound,
+            'regions_per_dimension': self.absDimension,
+        }
+        self.partition['size_per_region'] = self.stateResolution
+        
+        self.partition['goal_idx'] = set()
+        self.partition['unsafe_idx'] = set()
+
+        # iterate over all abstract states
+        for abs_state_index, _ in np.ndenumerate(self.record):
+            abs_state_lower_bound = self.stateLowerBound + self.stateResolution * np.array(abs_state_index)
+            abs_state_upper_bound = abs_state_lower_bound + self.stateResolution
+            
+            if len(self.goalUpperBound) > 0:
+                if self.if_within(abs_state_lower_bound, self.goalLowerBound, self.goalUpperBound) and self.if_within(abs_state_upper_bound, self.goalLowerBound, self.goalUpperBound):
+                    self.partition['goal_idx'].add(abs_state_index)
+            
+            if len(self.criticalLowerBound) > 0:
+                if self.if_within(abs_state_lower_bound, self.criticalLowerBound, self.criticalUpperBound) or self.if_within(abs_state_upper_bound, self.criticalLowerBound, self.criticalUpperBound):
+                    self.partition['unsafe_idx'].add(abs_state_index)
+
+        # Every partition element also has an integer identifier
+        iterator = itertools.product(*map(range, np.zeros(self.partition['dim'], dtype=int), self.partition['regions_per_dimension'])) # why it was self.partition['regions_per_dimension'] + 1?
+        self.partition['tup2idx'] = {tup: idx for idx,tup in enumerate(iterator)}
+        self.partition['idx2tup'] = {tup: idx for idx, tup in enumerate(iterator)}
+        self.partition['nr_regions'] = len(self.partition['tup2idx'])
+
+        # The probability table is an N+1 x 2 table, with N the number of samples. The first column contains the lower bound
+        # probability, and the second column the upper bound.
+        probability_table = np.zeros((self.numNoiseSamples+1, 2))
+
+        # We specify the probability with which a probability interval is wrong (i.e., 1 minus the confidence probability)
+        inverse_confidence = 0.05
+
+        P_low, P_upp = create_table(N=self.numNoiseSamples, beta=inverse_confidence, kstep=1, trials=0, export=False)
+        probability_table = np.column_stack((P_low, P_upp))
+
+        self.transitions = np.empty(self.absDimension, dtype=object)
+        for index, _ in np.ndenumerate(self.transitions):
+            self.transitions[index] = []
+
+        for index, _ in np.ndenumerate(self.transitions):
+            for action in self.actions[index]:
+                target_lb = action[2]
+                target_ub = action[3]
+
+                clusters = {
+                    'lb': self.noise_samples + target_lb,
+                    'ub': self.noise_samples + target_ub,
+                    'value': np.ones(self.numNoiseSamples)
+                }
+                
+                output = compute_intervals(Nsamples=self.numNoiseSamples, inverse_confidence=inverse_confidence, partition=self.partition, clusters=clusters, probability_table=probability_table, debug=False)
+                self.transitions[index].append(output)
+
+        print("Transitions are found")
+
+    def create_IMDP(self, timebound=np.inf, problem_type='reachavoid', foldername='/root/IMDP/prism'):
+        print('\nExport abstraction as PRISM model...')
+
+        timespec = ""
+        if timebound != np.inf:
+            timespec = 'F<=' + str(timebound) + ' '
+        else:
+            timespec = 'F '
+
+        if problem_type == 'avoid':
+            specification = 'Pminmax=? [' + timespec + ' "failed" ]'
+        else:
+            specification = 'Pmaxmin=? [' + timespec + ' "reached" ]'
+
+        # Write specification file
+        writeFile(foldername + "/abstraction.pctl", 'w', specification)
+
+        ##############################
+
+        # Define tuple of state variables (for header in PRISM state file)
+        state_var_string = ['(' + ','.join([f'x{i+1}' for i in range(self.stateDimension)]) + ')']
+
+        state_file_header = ['0:(' + ','.join([str(-3)] * self.stateDimension) + ')',
+                             '1:(' + ','.join([str(-2)] * self.stateDimension) + ')',
+                             '2:(' + ','.join([str(-1)] * self.stateDimension) + ')']
+
+        state_file_content = []
+
+        for abs_state in itertools.product(*map(range, self.absDimension)):
+            state_id = self.partition['tup2idx'][abs_state] + 3
+            state_representation = str(state_id) + ':' + str(abs_state).replace(' ', '')
+            state_file_content.append(state_representation)
+
+        state_file_string = '\n'.join(state_var_string + state_file_header + state_file_content)
+
+        # Write content to file
+        writeFile(foldername + "/abstraction.sta", 'w', state_file_string)
+
+        label_head = ['0="init" 1="deadlock" 2="reached" 3="failed"'] + \
+                     ['0: 1 3'] + ['1: 1 3'] + ['2: 2']
+
+        label_body = ['' for i in range(self.record.size)]
+
+        for abs_state in itertools.product(*map(range, self.absDimension)):
+            state_id = self.partition['tup2idx'][abs_state]
+            substring = str(state_id + 3) + ': 0'
+
+            # Check if region is a deadlock state
+            if self.actions[abs_state] == []:
+                substring += ' 1'
+
+            # Check if region is in goal set
+            if abs_state in self.partition['goal_idx']:
+                substring += ' 2'
+            elif abs_state in self.partition['unsafe_idx']:
+                substring += ' 3'
+
+            label_body[state_id] = substring
+
+        label_full = '\n'.join(label_head) + '\n' + '\n'.join(label_body)
+
+        # Write content to file
+        writeFile(foldername + "/abstraction.lab", 'w', label_full)
+
+        ##############################
+
+        nr_choices_absolute = -1
+        nr_transitions_absolute = 0
+        transition_file_list = ''
+        head = 3
+
+        for index, _ in np.ndenumerate(self.transitions):
+            if index in self.partition['goal_idx']:
+                # print(' ---- Skip',index,'because it is a goal region')
+                continue
+            if index in self.partition['unsafe_idx']:
+                # print(' ---- Skip',index,'because it is a critical region')
+                continue
+            
+            if self.transitions[index] != []:
+                choice = -1
+                for action in self.transitions[index]:
+                    choice += 1
+                    nr_choices_absolute += 1
+                    print(action)
+                    for trnasition_ind in range(len(action['successor_idxs'])):
+                        transition_file_list += str(self.partition['tup2idx'][index] + head) + ' ' + str(choice) + ' ' + \
+                        str(int(action['successor_idxs'][trnasition_ind]) + head) + ' ' + str(action['interval_strings'][trnasition_ind]) + \
+                        ' a_' + str(nr_choices_absolute) + '\n'
+                        nr_transitions_absolute += 1
+                    
+                    transition_file_list += str(self.partition['tup2idx'][index] + head) + ' ' + str(choice) + \
+                    ' 0 ' + str(action['outOfPartition_interval_string']) + \
+                    ' a_' + str(nr_choices_absolute) + '\n'
+                    nr_transitions_absolute += 1
+                
+            else: 
+                new_transitions = str(self.partition['tup2idx'][index] + head) + ' 0 ' + str(self.partition['tup2idx'][index] + head) + ' [1.0,1.0]\n'
+                transition_file_list += new_transitions
+                nr_choices_absolute += 1
+                nr_transitions_absolute += 1
+                    
+        
+        size_states = self.record.size + head
+        size_choices = nr_choices_absolute + head
+        size_transitions = nr_transitions_absolute + head
+        header = str(size_states) + ' ' + str(size_choices) + ' ' + str(size_transitions) + '\n'
+        firstrow = '0 0 0 [1.0,1.0]\n1 0 1 [1.0,1.0]\n2 0 2 [1.0,1.0]\n'
+        writeFile(foldername + "/abstraction.tra", 'w', header + firstrow + transition_file_list)

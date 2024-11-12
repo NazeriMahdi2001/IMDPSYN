@@ -221,77 +221,21 @@ def compute_intervals(Nsamples, inverse_confidence, partition, clusters, probabi
                       str(outOfPartition_lb) + ',' + \
                       str(outOfPartition_ub) + ']'
 
-    #### POINT ESTIMATE PROBABILITIES
-    probability_approx = np.round(probability_approx, nr_decimals)
+    # #### POINT ESTIMATE PROBABILITIES
+    # probability_approx = np.round(probability_approx, nr_decimals)
 
-    # Create approximate prob. strings (only entries for prob > 0)
-    approx_strings = [str(p) for p in probability_approx]
+    # # Create approximate prob. strings (only entries for prob > 0)
+    # approx_strings = [str(p) for p in probability_approx]
 
-    # Compute approximate transition probability to go outside the partition
-    outOfPartition_approx = np.round(1 - sum(probability_approx), nr_decimals)
+    # # Compute approximate transition probability to go outside the partition
+    # outOfPartition_approx = np.round(1 - sum(probability_approx), nr_decimals)
 
     returnDict = {
         'successor_idxs': successor_idxs,
         'interval_strings': interval_strings,
-        'approx_strings': approx_strings,
+        # 'approx_strings': approx_strings,
         'outOfPartition_interval_string': outOfPartition_string,
-        'outOfPartition_approx': outOfPartition_approx,
+        # 'outOfPartition_approx': outOfPartition_approx,
     }
 
     return returnDict
-
-
-if __name__ == "__main__":
-
-    #Clusters` is a dictionary containing the relevant information of the samples
-    w = np.array([
-        [0.5, 0.3],
-        [0.2, 0.1],
-        [-0.1, 0]
-    ])
-    target_lb = np.array([0, 0])
-    target_ub = np.array([1, 1])
-
-    clusters = {
-        'lb': w + target_lb,
-        'ub': w + target_ub,
-        'value': np.array([1,1,1])
-    }
-
-    # Total number of noise samples is the sum of the cluster values (each cluster may represent multiple samples)
-    N = np.sum(clusters['value'])
-
-    partition = {
-        'state_variables': ['x','y'],
-        'dim': 2,
-        'lb': np.array([-1,-1], dtype=int),
-        'ub': np.array([3,2], dtype=int),
-        'regions_per_dimension': np.array([4,3], dtype=int),
-    }
-    partition['size_per_region'] = (partition['ub'] - partition['lb']) / partition['regions_per_dimension']
-    partition['goal_idx'] = set([ (3,2) ])
-    partition['unsafe_idx'] = set([ (0,0) ])
-
-    # Every partition element also has an integer identifier
-    iterator = itertools.product(*map(range, np.zeros(partition['dim'], dtype=int), partition['regions_per_dimension'] + 1))
-    partition['tup2idx'] = {tup: idx for idx,tup in enumerate(iterator)}
-    partition['idx2tup'] = {tup: idx for idx, tup in enumerate(iterator)}
-    partition['nr_regions'] = len(partition['tup2idx'])
-
-    # The probability table is an N+1 x 2 table, with N the number of samples. The first column contains the lower bound
-    # probability, and the second column the upper bound.
-    probability_table = np.zeros((N+1, 2))
-
-    # We specify the probability with which a probability interval is wrong (i.e., 1 minus the confidence probability)
-    inverse_confidence = 0.01
-
-    P_low, P_upp = create_table(N=N, beta=inverse_confidence, kstep=1, trials=0, export=False)
-    probability_table = np.column_stack((P_low, P_upp))
-
-    '''
-    The `compute_intervals` function computes the transition probability intervals for a specific state-action pair. Thus, to generate the whole abstraction, we need to call this
-    function once for every state-action pair (or, if the action outcome is independent of the origin state, then only for every action).
-    '''
-    output = compute_intervals(Nsamples=N, inverse_confidence=inverse_confidence, partition=partition, clusters=clusters, probability_table=probability_table, debug=True)
-
-    print(output)
