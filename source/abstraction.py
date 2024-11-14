@@ -3,10 +3,12 @@ import configparser, ast
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import itertools
+import pathlib
+import subprocess
 from source.commons import floor_decimal
+from source.commons import writeFile
 from source.tabulate_scenario import create_table
 from source.compute_probabilities import compute_intervals
-from source.commons import writeFile
 
 class Abstraction:
     def __init__(self, dynamics, config_file):
@@ -175,7 +177,7 @@ class Abstraction:
                 # plt.savefig(f'plot{pre_state_index}{abs_state_index}.png', dpi=500)
 
     def generate_noise_samples(self, noiseAmplitude=0.1):
-        self.noise_samples = np.random.uniform(np.zeros(self.stateDimension), self.stateResolution*noiseAmplitude, (self.numNoiseSamples, self.stateDimension))
+        self.noise_samples = np.random.uniform(-1*self.stateResolution*noiseAmplitude, self.stateResolution*noiseAmplitude, (self.numNoiseSamples, self.stateDimension))
 
     def find_transitions(self):
         self.partition = {
@@ -253,6 +255,7 @@ class Abstraction:
         else:
             specification = 'Pmaxmin=? [' + timespec + ' "reached" ]'
 
+        self.specification = specification
         # Write specification file
         writeFile(foldername + "/abstraction.pctl", 'w', specification)
 
@@ -348,3 +351,39 @@ class Abstraction:
         header = str(size_states) + ' ' + str(size_choices) + ' ' + str(size_transitions) + '\n'
         firstrow = '0 0 0 [1.0,1.0]\n1 0 1 [1.0,1.0]\n2 0 2 [1.0,1.0]\n'
         writeFile(foldername + "/abstraction.tra", 'w', header + firstrow + transition_file_list)
+
+    def solve_iMDP(self, foldername='/root/IMDP/prism', prism_executable='/root/IMDP/prism-4.8.1-linux64-x86/bin/prism'):
+        print('\n+++++++++++++++++++++++++++++++++++++++++++++++++++++\n')
+        
+        print('Starting PRISM...')
+        
+        with open(foldername + "/abstraction.pctl", 'r') as file:
+            spec = file.read().strip()
+        mode = "interval"
+        
+        print(' -- Running PRISM with specification for mode',
+              mode.upper()+'...')
+
+        file_prefix = foldername + "PRISM_" + mode
+        policy_file = file_prefix + '_policy.txt'
+        vector_file = file_prefix + '_vector.csv'
+
+        options = ' -exportstrat "' + policy_file + '"' + \
+                  ' -exportvector "' + vector_file + '"'
+    
+        print(' --- Execute PRISM command for EXPLICIT model description')        
+
+
+        prism_java_memory = 1
+        prism_executable = prism_executable
+        prism_file = foldername + '/abstraction.all'
+
+        model_file      = '"'+prism_file+'"'
+        # Check if the prism executable can be found and if so, run it on the generated iMDP.
+        if not pathlib.Path(prism_executable).is_file():
+            raise Exception(f"Could not find the prism executable. Please check if the following path to the executable is correct: {str(prism_executable)}")
+        command = prism_executable + " -javamaxmem " + \
+                  str(prism_java_memory) + "g -importmodel " + model_file + " -pf '" + \
+                  spec + "' " + options
+        
+        subprocess.Popen(command, shell=True).wait()
