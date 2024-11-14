@@ -81,7 +81,7 @@ def trial_SAD(N, beta, d, krange, fac):
     return width
 
 
-def create_table(N, beta, kstep, trials, export=False):
+def create_table(N, beta, kstep, trials, export=False, clopper_pearson=True):
 
     print(f'- Tabulate intervals for N={N}, beta={beta}')
 
@@ -91,7 +91,12 @@ def create_table(N, beta, kstep, trials, export=False):
     eps_low = np.zeros(len(krange))
     eps_upp = np.zeros(len(krange))
 
-    beta_bar = beta / (2 * len(krange))
+    if clopper_pearson:
+        # Use Clopper-Pearson probability intervals (better than scenario approach)
+        beta_bar = beta / 2
+    else:
+        # Use scenario approach to obtain probability intervals (from previous papers)
+        beta_bar = beta / (2 * len(krange))
 
     # Compute violation level (epsilon)
     for i, k in enumerate(krange):
