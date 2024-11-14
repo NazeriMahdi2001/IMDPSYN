@@ -131,7 +131,7 @@ class Abstraction:
         state_linspaces = [np.linspace(lower, upper, self.numDivisions, endpoint=True) for lower, upper in zip(half_resolution, self.stateResolution - half_resolution)]
         state_grid = np.moveaxis(np.meshgrid(*state_linspaces, copy=False), 0, -1)
         
-        for abs_state_index, _ in np.ndenumerate(self.record):
+        for abs_state_index, _ in tqdm(np.ndenumerate(self.record), desc="Finding actions", total=np.prod(self.absDimension)):
             abs_state_lower_bound = self.stateLowerBound + self.stateResolution * np.array(abs_state_index)
             abs_state_upper_bound = abs_state_lower_bound + self.stateResolution
 
@@ -176,7 +176,7 @@ class Abstraction:
                 # plt.title(f'Freedom for transition from {pre_state_index} to {abs_state_index}')
                 # plt.savefig(f'plot{pre_state_index}{abs_state_index}.png', dpi=500)
 
-    def generate_noise_samples(self, noiseAmplitude=0.1):
+    def generate_noise_samples(self, noiseAmplitude=0.05):
         self.noise_samples = np.random.uniform(-1*self.stateResolution*noiseAmplitude, self.stateResolution*noiseAmplitude, (self.numNoiseSamples, self.stateDimension))
 
     def find_transitions(self):
@@ -216,7 +216,7 @@ class Abstraction:
         probability_table = np.zeros((self.numNoiseSamples+1, 2))
 
         # We specify the probability with which a probability interval is wrong (i.e., 1 minus the confidence probability)
-        inverse_confidence = 0.05
+        inverse_confidence = 0.05/20000
 
         P_low, P_upp = create_table(N=self.numNoiseSamples, beta=inverse_confidence, kstep=1, trials=0, export=False)
         probability_table = np.column_stack((P_low, P_upp))
@@ -225,7 +225,7 @@ class Abstraction:
         for index, _ in np.ndenumerate(self.transitions):
             self.transitions[index] = []
 
-        for index, _ in np.ndenumerate(self.transitions):
+        for index, _ in tqdm(np.ndenumerate(self.transitions), desc="Finding transitions", total=np.prod(self.absDimension)):
             for action in self.actions[index]:
                 target_lb = action[2]
                 target_ub = action[3]
@@ -308,7 +308,7 @@ class Abstraction:
 
         ##############################
 
-        nr_choices_absolute = -1
+        nr_choices_absolute = 0
         nr_transitions_absolute = 0
         transition_file_list = ''
         head = 3
@@ -326,11 +326,11 @@ class Abstraction:
                 for action in self.transitions[index]:
                     choice += 1
                     nr_choices_absolute += 1
-                    print(action)
+                    # print(action)
                     for trnasition_ind in range(len(action['successor_idxs'])):
                         transition_file_list += str(self.partition['tup2idx'][index] + head) + ' ' + str(choice) + ' ' + \
                         str(int(action['successor_idxs'][trnasition_ind]) + head) + ' ' + str(action['interval_strings'][trnasition_ind]) + \
-                        ' a_' + str(nr_choices_absolute) + '\n'
+                        ' a_' + str(int(action['successor_idxs'][trnasition_ind]) + head) + '\n'
                         nr_transitions_absolute += 1
                     
                     transition_file_list += str(self.partition['tup2idx'][index] + head) + ' ' + str(choice) + \
