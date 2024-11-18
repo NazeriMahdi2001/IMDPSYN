@@ -237,7 +237,7 @@ class Abstraction:
                 }
                 
                 output = compute_intervals(Nsamples=self.numNoiseSamples, inverse_confidence=inverse_confidence, partition=self.partition, clusters=clusters, probability_table=probability_table, debug=False)
-                self.transitions[index].append(output)
+                self.transitions[index].append([output, action[1]])
 
         print("Transitions are found")
 
@@ -314,10 +314,10 @@ class Abstraction:
         head = 3
 
         for index, _ in np.ndenumerate(self.transitions):
-            if index in self.partition['goal_idx']:
+            if index[0] in self.partition['goal_idx']:
                 # print(' ---- Skip',index,'because it is a goal region')
                 continue
-            if index in self.partition['unsafe_idx']:
+            if index[0] in self.partition['unsafe_idx']:
                 # print(' ---- Skip',index,'because it is a critical region')
                 continue
             
@@ -326,16 +326,15 @@ class Abstraction:
                 for action in self.transitions[index]:
                     choice += 1
                     nr_choices_absolute += 1
-                    # print(action)
-                    for trnasition_ind in range(len(action['successor_idxs'])):
+                    for trnasition_ind in range(len(action[0]['successor_idxs'])):
                         transition_file_list += str(self.partition['tup2idx'][index] + head) + ' ' + str(choice) + ' ' + \
-                        str(int(action['successor_idxs'][trnasition_ind]) + head) + ' ' + str(action['interval_strings'][trnasition_ind]) + \
-                        ' a_' + str(int(action['successor_idxs'][trnasition_ind]) + head) + '\n'
+                        str(int(action[0]['successor_idxs'][trnasition_ind]) + head) + ' ' + str(action[0]['interval_strings'][trnasition_ind]) + \
+                        ' a_' + str(int(self.partition['tup2idx'][action[1]]) + head) + '\n'
                         nr_transitions_absolute += 1
                     
                     transition_file_list += str(self.partition['tup2idx'][index] + head) + ' ' + str(choice) + \
-                    ' 0 ' + str(action['outOfPartition_interval_string']) + \
-                    ' a_' + str(nr_choices_absolute) + '\n'
+                    ' 0 ' + str(action[0]['outOfPartition_interval_string']) + \
+                    ' a_' + str(int(self.partition['tup2idx'][action[1]]) + head) + '\n'
                     nr_transitions_absolute += 1
                 
             else: 
