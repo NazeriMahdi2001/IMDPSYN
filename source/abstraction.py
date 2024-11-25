@@ -9,6 +9,106 @@ from source.commons import floor_decimal
 from source.commons import writeFile
 from source.tabulate_scenario import create_table
 from source.compute_probabilities import compute_intervals
+from joblib import Parallel, delayed
+import copy
+
+def find_abs_state(state, stateLowerBound, stateResolution):
+        # Find the abstract state of a continuous state
+        return np.floor((state - stateLowerBound) / stateResolution).astype(int)
+
+def if_within(state, lowerBound, upperBound):
+        return np.all(state >= lowerBound) and np.all(state < upperBound)
+
+def gen(args):
+    abs_state, stateLowerBound, stateUpperBound, stateResolution, state_grid, control_grid, dynamics = args
+    result = []
+    abs_state_lower_bound = stateLowerBound + stateResolution * np.array(abs_state)
+
+    for state_index in np.ndindex(state_grid.shape[:-1]):
+        # pick a sample state
+        state = abs_state_lower_bound + state_grid[state_index]
+        best_control = {}
+        # iterate over all control inputs
+        for control_index in np.ndindex(control_grid.shape[:-1]):
+            control = control_grid[control_index]
+            next_state = np.array(dynamics.set_state(*state).update_dynamics(control))
+
+            if not if_within(next_state, stateLowerBound, stateUpperBound):
+                continue
+
+            abs_next_state = find_abs_state(next_state, stateLowerBound, stateResolution)
+            abs_next_lower_bound = stateLowerBound + stateResolution * abs_next_state
+            abs_next_upper_bound = abs_next_lower_bound + stateResolution
+
+            next_state_distance_to_border = np.minimum(np.array(next_state - abs_next_lower_bound), np.array(abs_next_upper_bound - next_state))
+            next_state_freedom = np.min(next_state_distance_to_border / ((stateResolution) @ dynamics.max_jacobian(control).T))
+
+            # keep the control input that gives the maximum freedom - which is the maximum distance to the border
+            abs_next_state = tuple(abs_next_state)
+            if abs_next_state in best_control:
+                if best_control[abs_next_state][1] < next_state_freedom:
+                    best_control[abs_next_state] = (control, next_state_freedom)
+            else:
+                best_control[abs_next_state] = (control, next_state_freedom)
+
+
+        # record best control inputs for each forward reached abstract state
+        for reachable_state in best_control:
+            next_state = np.array(dynamics.set_state(*state).update_dynamics(best_control[reachable_state][0]))
+            abs_next_state = find_abs_state(next_state, stateLowerBound, stateResolution)
+            result.append([tuple(abs_next_state), state, best_control[reachable_state][0], next_state])
+            # print(state, best_control[reachable_state][0], next_state, self.find_abs_state(state), abs_next_state)
+
+    return result
+
+def fin(args):
+    actions = []
+    abs_state_index, stateDimension, stateLowerBound, stateResolution, numGridSamples, numDivisions, record, state_grid, half_resolution, dynamics = args
+
+    abs_state_lower_bound = stateLowerBound + stateResolution * np.array(abs_state_index)
+    abs_state_upper_bound = abs_state_lower_bound + stateResolution
+
+    predecessors = {}
+    for sample in record:
+        key = tuple(find_abs_state(sample[0], stateLowerBound, stateResolution))
+        if key not in predecessors:
+            predecessors[key] = []
+        predecessors[key].append(sample)
+
+    for pre_state_index in predecessors:
+        if len(predecessors[pre_state_index]) < numGridSamples[0][0] * numGridSamples[0][1]:
+            continue
+        pre_state_lower_bound = stateLowerBound + stateResolution * np.array(pre_state_index)
+        pre_state_upper_bound = pre_state_lower_bound + stateResolution
+        target_size = np.ones((int(numDivisions ** stateDimension), 2)) * -1e3
+
+        # print(pre_state_index, abs_state_index, len(predecessors[pre_state_index]))
+        for sample in predecessors[pre_state_index]:
+            next_state_dist_to_border = np.minimum(np.array(sample[2] - abs_state_lower_bound), np.array(abs_state_upper_bound - sample[2]))
+            grid_index = -1
+
+            for idx in np.ndindex(state_grid.shape[:-1]):
+                grid_index += 1
+                point = state_grid[idx] + pre_state_lower_bound
+                pre_state_dist_to_border = np.abs(sample[0] - point) + half_resolution
+
+                delta_f = pre_state_dist_to_border @ np.array(dynamics.max_jacobian(sample[1])).T
+                target_size[grid_index, :] = np.maximum(target_size[grid_index, :], next_state_dist_to_border - delta_f)
+        
+
+        if np.min(target_size) > 0:
+            #print(f'For every continuous state in {np.array(pre_state_index)}, these exist a control input such that the next state of the nominal system is inside target set of abstract state {abs_state_index}')
+            #print(f'i = {np.array(pre_state_index)}, j = {np.array(abs_state_index)}, c_i = {np.array(pre_state_lower_bound)} to {np.array(pre_state_upper_bound)}, c_j = {np.array(abs_state_lower_bound)} to {np.array(abs_state_upper_bound)}, t_i_to_j = {np.array(abs_state_lower_bound + np.min(target_size, axis=0))} to {np.array(abs_state_upper_bound) - np.min(target_size, axis=0)}')
+            actions.append([pre_state_index, abs_state_index, abs_state_lower_bound + np.min(target_size, axis=0), abs_state_upper_bound - np.min(target_size, axis=0)])
+        # plt.figure()
+        # freedom_grid = target_size[:, 0].reshape((self.numDivisions, self.numDivisions))
+        # plt.imshow(freedom_grid, extent=(pre_state_lower_bound[0], pre_state_upper_bound[0], pre_state_lower_bound[1], pre_state_upper_bound[1]), origin='lower', cmap='viridis', alpha=0.6)
+        # plt.colorbar(label='Freedom')
+        # plt.xlabel('State Dimension 1')
+        # plt.ylabel('State Dimension 2')
+        # plt.title(f'Freedom for transition from {pre_state_index} to {abs_state_index}')
+        # plt.savefig(f'plot{pre_state_index}{abs_state_index}.png', dpi=500)
+    return actions
 
 class Abstraction:
     def __init__(self, dynamics, config_file):
@@ -47,7 +147,7 @@ class Abstraction:
         self.numDivisions = int(config['DEFAULT']['numDivisions'])
 
         # Number of abstract cells in each dimension
-        self.absDimension = np.ceil((self.stateUpperBound - self.stateLowerBound) / self.stateResolution).astype(int)
+        self.absDimension = np.round((self.stateUpperBound - self.stateLowerBound) / self.stateResolution).astype(int)
 
         self.numNoiseSamples= int(config['DEFAULT']['numNoiseSamples'])
 
@@ -63,9 +163,10 @@ class Abstraction:
 
     def generate_samples(self):
         # sample record is an n-d array of lists, where each list contains the samples that reach the corresponding abstract state
-        sample_record = np.empty(self.absDimension, dtype=object)
-        for index, _ in np.ndenumerate(sample_record):
-            sample_record[index] = []
+        self.record = np.empty(self.absDimension, dtype=object)
+
+        for index, _ in np.ndenumerate(self.record):
+            self.record[index] = []
 
         # samples from the state space
         state_linspaces = [np.linspace(0, bound, int(samples), endpoint=False) for bound, samples in
@@ -77,48 +178,27 @@ class Abstraction:
                              zip(self.controlLowerBound, self.controlUpperBound, self.numGridSamples[1])]
         control_grid = np.moveaxis(np.meshgrid(*control_linspaces, copy=False), 0, -1)
 
-        # generate samples
-        for abs_state in tqdm(np.ndindex(tuple(self.absDimension)), desc="Processing abstract states", total=np.prod(self.absDimension)):
-            abs_state_lower_bound = self.stateLowerBound + self.stateResolution * np.array(abs_state)
+        gen_args = [
+            (
+            abs_state,
+            copy.deepcopy(self.stateLowerBound),
+            copy.deepcopy(self.stateUpperBound),
+            copy.deepcopy(self.stateResolution),
+            copy.deepcopy(state_grid),
+            copy.deepcopy(control_grid),
+            copy.deepcopy(self.dynamics)
+            )
+            for abs_state in np.ndindex(tuple(self.absDimension))
+        ]
 
-            for state_index in np.ndindex(state_grid.shape[:-1]):
-                # pick a sample state
-                state = abs_state_lower_bound + state_grid[state_index]
-                best_control = {}
-                # iterate over all control inputs
-                for control_index in np.ndindex(control_grid.shape[:-1]):
-                    control = control_grid[control_index]
-                    next_state = np.array(self.dynamics.set_state(*state).update_dynamics(control))
+        results = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=50)(delayed(gen)(args) for args in gen_args)
 
-                    if not self.if_within(next_state, self.stateLowerBound, self.stateUpperBound):
-                        continue
+        #results = [gen(gen_args[21])]
 
-                    abs_next_state = self.find_abs_state(next_state)
-                    abs_next_lower_bound = self.stateLowerBound + self.stateResolution * abs_next_state
-                    abs_next_upper_bound = abs_next_lower_bound + self.stateResolution
-
-                    next_state_distance_to_border = np.minimum(np.array(next_state - abs_next_lower_bound), np.array(abs_next_upper_bound - next_state))
-                    next_state_freedom = np.min(next_state_distance_to_border / ((self.stateResolution) @ self.dynamics.max_jacobian(control).T))
-
-                    # keep the control input that gives the maximum freedom - which is the maximum distance to the border
-                    abs_next_state = tuple(abs_next_state)
-                    if abs_next_state in best_control:
-                        if best_control[abs_next_state][1] < next_state_freedom:
-                            best_control[abs_next_state] = (control, next_state_freedom)
-                    else:
-                        best_control[abs_next_state] = (control, next_state_freedom)
-
-
-                # record best control inputs for each forward reached abstract state
-                for reachable_state in best_control:
-                    next_state = np.array(self.dynamics.set_state(*state).update_dynamics(best_control[reachable_state][0]))
-                    abs_next_state = self.find_abs_state(next_state)
-                    sample_record[tuple(abs_next_state)].append((state, best_control[reachable_state][0], next_state))
-                    # print(state, best_control[reachable_state][0], next_state, self.find_abs_state(state), abs_next_state)
-                
-            # break # uncomment this line to test the code with a single abstract state
-            
-        self.record = sample_record
+        # Flatten the list of results
+        for result in results:
+            for sample in result:
+                self.record[sample[0]].append(sample[1:])
 
         print("Samples are generated")
 
@@ -131,52 +211,35 @@ class Abstraction:
         state_linspaces = [np.linspace(lower, upper, self.numDivisions, endpoint=True) for lower, upper in zip(half_resolution, self.stateResolution - half_resolution)]
         state_grid = np.moveaxis(np.meshgrid(*state_linspaces, copy=False), 0, -1)
         
-        for abs_state_index, _ in tqdm(np.ndenumerate(self.record), desc="Finding actions", total=np.prod(self.absDimension)):
-            abs_state_lower_bound = self.stateLowerBound + self.stateResolution * np.array(abs_state_index)
-            abs_state_upper_bound = abs_state_lower_bound + self.stateResolution
+        fin_args = [
+            (
+            abs_state_index,
+            self.stateDimension,
+            copy.deepcopy(self.stateLowerBound),
+            copy.deepcopy(self.stateResolution),
+            copy.deepcopy(self.numGridSamples),
+            copy.deepcopy(self.numDivisions),
+            copy.deepcopy(self.record[abs_state_index]),
+            copy.deepcopy(state_grid),
+            copy.deepcopy(half_resolution),
+            copy.deepcopy(self.dynamics)
+            )
+            for abs_state_index, _ in np.ndenumerate(self.record)
+        ]
 
-            predecessors = {}
-            for sample in self.record[abs_state_index]:
-                key = tuple(self.find_abs_state(sample[0]))
-                if key not in predecessors:
-                    predecessors[key] = []
-                predecessors[key].append(sample)
+        print("start finding actions")
+        results = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=50)(delayed(fin)(args) for args in fin_args)
 
-            for pre_state_index in predecessors:
-                if len(predecessors[pre_state_index]) < self.numGridSamples[0][0] * self.numGridSamples[0][1]:
-                    continue
-                pre_state_lower_bound = self.stateLowerBound + self.stateResolution * np.array(pre_state_index)
-                pre_state_upper_bound = pre_state_lower_bound + self.stateResolution
-                target_size = np.ones((int(self.numDivisions ** self.stateDimension), 2)) * -1e3
+        # results = [fin(fin_args[21])]
 
-                # print(pre_state_index, abs_state_index, len(predecessors[pre_state_index]))
-                for sample in predecessors[pre_state_index]:
-                    next_state_dist_to_border = np.minimum(np.array(sample[2] - abs_state_lower_bound), np.array(abs_state_upper_bound - sample[2]))
-                    grid_index = -1
+        # Flatten the list of results
+        for result in results:
+            for sample in result:
+                self.actions[sample[0]].append(sample)
 
-                    for idx in np.ndindex(state_grid.shape[:-1]):
-                        grid_index += 1
-                        point = state_grid[idx] + pre_state_lower_bound
-                        pre_state_dist_to_border = np.abs(sample[0] - point) + half_resolution
+        print("Actions are found")
 
-                        delta_f = pre_state_dist_to_border @ np.array(self.dynamics.max_jacobian(sample[1])).T
-                        target_size[grid_index, :] = np.maximum(target_size[grid_index, :], next_state_dist_to_border - delta_f)
-                
-
-                if np.min(target_size) > 0:
-                    #print(f'For every continuous state in {np.array(pre_state_index)}, these exist a control input such that the next state of the nominal system is inside target set of abstract state {abs_state_index}')
-                    #print(f'i = {np.array(pre_state_index)}, j = {np.array(abs_state_index)}, c_i = {np.array(pre_state_lower_bound)} to {np.array(pre_state_upper_bound)}, c_j = {np.array(abs_state_lower_bound)} to {np.array(abs_state_upper_bound)}, t_i_to_j = {np.array(abs_state_lower_bound + np.min(target_size, axis=0))} to {np.array(abs_state_upper_bound) - np.min(target_size, axis=0)}')
-                    self.actions[pre_state_index].append([pre_state_index, abs_state_index, abs_state_lower_bound + np.min(target_size, axis=0), abs_state_upper_bound - np.min(target_size, axis=0)])
-                # plt.figure()
-                # freedom_grid = target_size[:, 0].reshape((self.numDivisions, self.numDivisions))
-                # plt.imshow(freedom_grid, extent=(pre_state_lower_bound[0], pre_state_upper_bound[0], pre_state_lower_bound[1], pre_state_upper_bound[1]), origin='lower', cmap='viridis', alpha=0.6)
-                # plt.colorbar(label='Freedom')
-                # plt.xlabel('State Dimension 1')
-                # plt.ylabel('State Dimension 2')
-                # plt.title(f'Freedom for transition from {pre_state_index} to {abs_state_index}')
-                # plt.savefig(f'plot{pre_state_index}{abs_state_index}.png', dpi=500)
-
-    def generate_noise_samples(self, noiseAmplitude=0.05):
+    def generate_noise_samples(self, noiseAmplitude=0.01):
         self.noise_samples = np.random.uniform(-1*self.stateResolution*noiseAmplitude, self.stateResolution*noiseAmplitude, (self.numNoiseSamples, self.stateDimension))
 
     def find_transitions(self):
@@ -241,7 +304,7 @@ class Abstraction:
 
         print("Transitions are found")
 
-    def create_IMDP(self, timebound=np.inf, problem_type='reachavoid', foldername='/root/IMDP/prism'):
+    def create_IMDP(self, foldername, timebound=np.inf, problem_type='reachavoid'):
         print('\nExport abstraction as PRISM model...')
 
         timespec = ""
@@ -351,7 +414,7 @@ class Abstraction:
         firstrow = '0 0 0 [1.0,1.0]\n1 0 1 [1.0,1.0]\n2 0 2 [1.0,1.0]\n'
         writeFile(foldername + "/abstraction.tra", 'w', header + firstrow + transition_file_list)
 
-    def solve_iMDP(self, foldername='/root/IMDP/prism', prism_executable='/root/IMDP/prism-4.8.1-linux64-x86/bin/prism'):
+    def solve_iMDP(self, foldername, prism_executable):
         print('\n+++++++++++++++++++++++++++++++++++++++++++++++++++++\n')
         
         print('Starting PRISM...')

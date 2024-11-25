@@ -1,10 +1,11 @@
 from models.pendulum import InvertedPendulum
+from models.dintegrator import DoubleIntegrator
 from source.abstraction import Abstraction
 
-prism_executable='/root/IMDP/prism-4.8.1-linux64-x86/bin/prism'
-foldername='/root/IMDP/prism'
+prism_executable='/home/mnazeri/IMDPSYN/prism-4.8.1-linux64-x86/bin/prism'
+foldername='/home/mnazeri/IMDPSYN/prism'
 
-abstraction = Abstraction(InvertedPendulum(), '/root/IMDP/models/pendulum.conf')
+abstraction = Abstraction(DoubleIntegrator(), '/home/mnazeri/IMDPSYN/models/dintegrator.conf')
 abstraction.generate_noise_samples()
 abstraction.generate_samples()
 abstraction.find_actions()

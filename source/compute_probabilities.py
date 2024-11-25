@@ -202,7 +202,7 @@ def compute_intervals(Nsamples, inverse_confidence, partition, clusters, probabi
         successor_idxs = np.array([])
 
     nr_decimals = 5 # Number of decimals to use for probability intervals (more decimals means larger file sizes)
-    Pmin = 1e-4 # Minimum lower bound probability interval to use (PRISM cannot handle zero lower bounds)
+    Pmin = 1e-8 # Minimum lower bound probability interval to use (PRISM cannot handle zero lower bounds)
 
     #### PROBABILITY INTERVALS
     probs_lb = np.maximum(Pmin, floor_decimal(probability_lb, nr_decimals))
