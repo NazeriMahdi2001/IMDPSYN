@@ -44,11 +44,11 @@ def computeRegionIdx(points, lb, ub, regions_per_dimension, size_per_region, ubB
     return indices, indices_nonneg
 
 
-def compute_intervals(Nsamples, inverse_confidence, partition, clusters, probability_table, debug=False):
+def compute_intervals(etc, Nsamples, inverse_confidence, partition, clusters, probability_table):
     '''
     Compute the probability intervals P(s,a,s') for a given pair (s,a) and for all successor states s'.
     '''
-
+    debug=0
     # Initialize arrays to keep track of how many samples are contained in each partition element
     counts_lb = np.zeros(partition['regions_per_dimension'])
     counts_ub = np.zeros(partition['regions_per_dimension'])
@@ -128,34 +128,34 @@ def compute_intervals(Nsamples, inverse_confidence, partition, clusters, probabi
     ###
 
     # For the remaining samples, only increment the upper bound count
-    print(f'\nAnalyse remaining {len(c_rem)} samples...')
+    # print(f'\nAnalyse remaining {len(c_rem)} samples...')
     for x, c in enumerate(c_rem):
         intersects_with = tuple(map(slice, iMin[x], iMax[x] + 1))
-        print(f'- Sample {c} with iMin={iMin[x]} and iMax={iMax[x]} intersects with region slice: {intersects_with}')
+        # print(f'- Sample {c} with iMin={iMin[x]} and iMax={iMax[x]} intersects with region slice: {intersects_with}')
         counts_ub[intersects_with] += clusters['value'][c]
 
         index_tuples = set(itertools.product(*map(range, iMin[x], iMax[x] + 1)))
 
         # Check if all are goal states
         if index_tuples.issubset(partition['goal_idx']) and not partially_out[c]:
-            print('-- All are goal states')
+            # print('-- All are goal states')
             counts_goal_lb += clusters['value'][c]
             counts_goal_ub += clusters['value'][c]
 
         # Check if all are unsafe states
         elif index_tuples.issubset(partition['unsafe_idx']) and not partially_out[c]:
-            print('-- All are unsafe states')
+            # print('-- All are unsafe states')
             counts_unsafe_lb += clusters['value'][c]
             counts_unsafe_ub += clusters['value'][c]
 
         # Otherwise, check if part of them are goal/unsafe states
         else:
             if not index_tuples.isdisjoint(partition['goal_idx']):
-                print('-- Some are goal states')
+                # print('-- Some are goal states')
                 counts_goal_ub += clusters['value'][c]
 
             if not index_tuples.isdisjoint(partition['unsafe_idx']):
-                print('-- Some are unsafe states')
+                # print('-- Some are unsafe states')
                 counts_unsafe_ub += clusters['value'][c]
 
     ###
@@ -238,4 +238,4 @@ def compute_intervals(Nsamples, inverse_confidence, partition, clusters, probabi
         # 'outOfPartition_approx': outOfPartition_approx,
     }
 
-    return returnDict
+    return [etc, returnDict]

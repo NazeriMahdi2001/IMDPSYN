@@ -16,8 +16,8 @@ def find_abs_state(state, stateLowerBound, stateResolution):
         # Find the abstract state of a continuous state
         return np.floor((state - stateLowerBound) / stateResolution).astype(int)
 
-def if_within(state, lowerBound, upperBound):
-        return np.all(state >= lowerBound) and np.all(state < upperBound)
+def if_within(state, lowerBound, upperBound, epsilon=1e-6):
+        return np.all(state >= lowerBound + epsilon) and np.all(state <= upperBound - epsilon)
 
 def gen(args):
     abs_state, stateLowerBound, stateUpperBound, stateResolution, state_grid, control_grid, dynamics = args
@@ -80,7 +80,7 @@ def fin(args):
             continue
         pre_state_lower_bound = stateLowerBound + stateResolution * np.array(pre_state_index)
         pre_state_upper_bound = pre_state_lower_bound + stateResolution
-        target_size = np.ones((int(numDivisions ** stateDimension), 2)) * -1e3
+        target_size = np.ones(numDivisions ** stateDimension) * -1e3
 
         # print(pre_state_index, abs_state_index, len(predecessors[pre_state_index]))
         for sample in predecessors[pre_state_index]:
@@ -93,7 +93,8 @@ def fin(args):
                 pre_state_dist_to_border = np.abs(sample[0] - point) + half_resolution
 
                 delta_f = pre_state_dist_to_border @ np.array(dynamics.max_jacobian(sample[1])).T
-                target_size[grid_index, :] = np.maximum(target_size[grid_index, :], next_state_dist_to_border - delta_f)
+                if target_size[grid_index] < np.min(next_state_dist_to_border - delta_f):
+                    target_size[grid_index] = np.min(next_state_dist_to_border - delta_f)
         
 
         if np.min(target_size) > 0:
@@ -150,7 +151,7 @@ class Abstraction:
         self.absDimension = np.round((self.stateUpperBound - self.stateLowerBound) / self.stateResolution).astype(int)
 
         self.numNoiseSamples= int(config['DEFAULT']['numNoiseSamples'])
-
+        self.noiseLevel = float(config['DEFAULT']['noiseLevel'])
     def find_abs_state(self, state):
         # Find the abstract state of a continuous state
         return np.floor((state - self.stateLowerBound) / self.stateResolution).astype(int)
@@ -169,8 +170,8 @@ class Abstraction:
             self.record[index] = []
 
         # samples from the state space
-        state_linspaces = [np.linspace(0, bound, int(samples), endpoint=False) for bound, samples in
-                           zip(self.stateResolution, self.numGridSamples[0])]
+        state_linspaces = [np.linspace(1e-6, bound, int(samples), endpoint=True) for bound, samples in
+                           zip(self.stateResolution - 1e-6, self.numGridSamples[0])]
         state_grid = np.moveaxis(np.meshgrid(*state_linspaces, copy=False), 0, -1)
 
         # samples from the control space
@@ -193,12 +194,30 @@ class Abstraction:
 
         results = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=50)(delayed(gen)(args) for args in gen_args)
 
-        #results = [gen(gen_args[21])]
+
 
         # Flatten the list of results
         for result in results:
             for sample in result:
                 self.record[sample[0]].append(sample[1:])
+
+        # print("plots")
+        
+        # index = (2, 3)
+        # plt.figure()
+        # for i, record in enumerate(self.record[index]):
+        #     state = record[0]
+        #     next_state = record[2]
+        #     plt.scatter(state[0], state[1], c='b', s=2)
+        #     plt.scatter(next_state[0], next_state[1], c='r', s=2)
+
+        
+        # plt.xlabel('State Dimension 1')
+        # plt.ylabel('State Dimension 2')
+        # plt.xticks(np.arange(self.stateLowerBound[0], self.stateUpperBound[0] + self.stateResolution[0], self.stateResolution[0]))
+        # plt.yticks(np.arange(self.stateLowerBound[1], self.stateUpperBound[1] + self.stateResolution[1], self.stateResolution[1]))
+        # plt.grid(True)
+        # plt.savefig(f'plot{index}.png', dpi=500)
 
         print("Samples are generated")
 
@@ -208,8 +227,8 @@ class Abstraction:
             self.actions[index] = []
 
         half_resolution = np.array(self.stateResolution) / (self.numDivisions * 2)
-        state_linspaces = [np.linspace(lower, upper, self.numDivisions, endpoint=True) for lower, upper in zip(half_resolution, self.stateResolution - half_resolution)]
-        state_grid = np.moveaxis(np.meshgrid(*state_linspaces, copy=False), 0, -1)
+        voxel_linspaces = [np.linspace(lower, upper, self.numDivisions, endpoint=True) for lower, upper in zip(half_resolution, self.stateResolution - half_resolution)]
+        voxel_grid = np.moveaxis(np.meshgrid(*voxel_linspaces, copy=False), 0, -1)
         
         fin_args = [
             (
@@ -220,7 +239,7 @@ class Abstraction:
             copy.deepcopy(self.numGridSamples),
             copy.deepcopy(self.numDivisions),
             copy.deepcopy(self.record[abs_state_index]),
-            copy.deepcopy(state_grid),
+            copy.deepcopy(voxel_grid),
             copy.deepcopy(half_resolution),
             copy.deepcopy(self.dynamics)
             )
@@ -230,7 +249,7 @@ class Abstraction:
         print("start finding actions")
         results = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=50)(delayed(fin)(args) for args in fin_args)
 
-        # results = [fin(fin_args[21])]
+
 
         # Flatten the list of results
         for result in results:
@@ -239,8 +258,8 @@ class Abstraction:
 
         print("Actions are found")
 
-    def generate_noise_samples(self, noiseAmplitude=0.01):
-        self.noise_samples = np.random.uniform(-1*self.stateResolution*noiseAmplitude, self.stateResolution*noiseAmplitude, (self.numNoiseSamples, self.stateDimension))
+    def generate_noise_samples(self):
+        self.noise_samples = np.random.uniform(-0.5*self.stateResolution*self.noiseLevel, 0.5*self.stateResolution*self.noiseLevel, (self.numNoiseSamples, self.stateDimension))
 
     def find_transitions(self):
         self.partition = {
@@ -265,13 +284,13 @@ class Abstraction:
                     self.partition['goal_idx'].add(abs_state_index)
             
             if len(self.criticalLowerBound) > 0:
-                if self.if_within(abs_state_lower_bound, self.criticalLowerBound, self.criticalUpperBound) or self.if_within(abs_state_upper_bound, self.criticalLowerBound, self.criticalUpperBound):
+                if self.if_within(abs_state_lower_bound, self.criticalLowerBound, self.criticalUpperBound) and self.if_within(abs_state_upper_bound, self.criticalLowerBound, self.criticalUpperBound):
                     self.partition['unsafe_idx'].add(abs_state_index)
 
         # Every partition element also has an integer identifier
         iterator = itertools.product(*map(range, np.zeros(self.partition['dim'], dtype=int), self.partition['regions_per_dimension'])) # why it was self.partition['regions_per_dimension'] + 1?
-        self.partition['tup2idx'] = {tup: idx for idx,tup in enumerate(iterator)}
-        self.partition['idx2tup'] = {tup: idx for idx, tup in enumerate(iterator)}
+        self.partition['tup2idx'] = {tup: idx for idx, tup in enumerate(iterator)}
+        self.partition['idx2tup'] = {idx: tup for idx, tup in enumerate(iterator)}
         self.partition['nr_regions'] = len(self.partition['tup2idx'])
 
         # The probability table is an N+1 x 2 table, with N the number of samples. The first column contains the lower bound
@@ -279,7 +298,7 @@ class Abstraction:
         probability_table = np.zeros((self.numNoiseSamples+1, 2))
 
         # We specify the probability with which a probability interval is wrong (i.e., 1 minus the confidence probability)
-        inverse_confidence = 0.05/20000
+        inverse_confidence = 0.05/500000
 
         P_low, P_upp = create_table(N=self.numNoiseSamples, beta=inverse_confidence, kstep=1, trials=0, export=False)
         probability_table = np.column_stack((P_low, P_upp))
@@ -288,6 +307,7 @@ class Abstraction:
         for index, _ in np.ndenumerate(self.transitions):
             self.transitions[index] = []
 
+        trans_args = []
         for index, _ in tqdm(np.ndenumerate(self.transitions), desc="Finding transitions", total=np.prod(self.absDimension)):
             for action in self.actions[index]:
                 target_lb = action[2]
@@ -299,8 +319,11 @@ class Abstraction:
                     'value': np.ones(self.numNoiseSamples)
                 }
                 
-                output = compute_intervals(Nsamples=self.numNoiseSamples, inverse_confidence=inverse_confidence, partition=self.partition, clusters=clusters, probability_table=probability_table, debug=False)
-                self.transitions[index].append([output, action[1]])
+                trans_args.append(([index, action[1]], self.numNoiseSamples, inverse_confidence, self.partition, clusters, probability_table))
+        
+        outputs = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=50)(delayed(compute_intervals)(*args) for args in trans_args)
+        for output in outputs:
+            self.transitions[output[0][0]].append([output[1], output[0][1]])
 
         print("Transitions are found")
 
@@ -377,10 +400,10 @@ class Abstraction:
         head = 3
 
         for index, _ in np.ndenumerate(self.transitions):
-            if index[0] in self.partition['goal_idx']:
+            if index in self.partition['goal_idx']:
                 # print(' ---- Skip',index,'because it is a goal region')
                 continue
-            if index[0] in self.partition['unsafe_idx']:
+            if index in self.partition['unsafe_idx']:
                 # print(' ---- Skip',index,'because it is a critical region')
                 continue
             
@@ -436,7 +459,7 @@ class Abstraction:
         print(' --- Execute PRISM command for EXPLICIT model description')        
 
 
-        prism_java_memory = 1
+        prism_java_memory = 8
         prism_executable = prism_executable
         prism_file = foldername + '/abstraction.all'
 

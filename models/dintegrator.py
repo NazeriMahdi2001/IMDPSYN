@@ -1,7 +1,7 @@
 import numpy as np
 
 class DoubleIntegrator:
-    def __init__(self, time_step=1):
+    def __init__(self, time_step=1, k=1e-4):
         self.time_step = time_step
 
         self.pos = 0.0
@@ -20,7 +20,7 @@ class DoubleIntegrator:
 
         for u in control:
             new_pos = self.pos + self.time_step * self.vel + 0.5 * self.time_step ** 2 * u
-            new_vel = self.vel + self.time_step * u
+            new_vel = self.vel - self.k * self.time_step * self.vel**3 + self.time_step * u
 
             self.pos = new_pos
             self.vel = new_vel
@@ -32,7 +32,7 @@ class DoubleIntegrator:
         d_1_d_1 = 1
         d_1_d_2 = self.time_step
         d_2_d_1 = 0
-        d_2_d_2 = 1
+        d_2_d_2 = 2
 
         max_jacobian_matrix = np.array([
             [d_1_d_1, d_1_d_2],
