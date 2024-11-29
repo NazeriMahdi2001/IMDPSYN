@@ -41,7 +41,7 @@ def gen(args):
             abs_next_upper_bound = abs_next_lower_bound + stateResolution
 
             next_state_distance_to_border = np.minimum(np.array(next_state - abs_next_lower_bound), np.array(abs_next_upper_bound - next_state))
-            next_state_freedom = np.min(next_state_distance_to_border / ((stateResolution) @ dynamics.max_jacobian(control).T))
+            next_state_freedom = np.min(next_state_distance_to_border / np.dot(stateResolution, dynamics.max_jacobian(control).T))
 
             # keep the control input that gives the maximum freedom - which is the maximum distance to the border
             abs_next_state = tuple(abs_next_state)
@@ -57,7 +57,7 @@ def gen(args):
             next_state = np.array(dynamics.set_state(*state).update_dynamics(best_control[reachable_state][0]))
             abs_next_state = find_abs_state(next_state, stateLowerBound, stateResolution)
             result.append([tuple(abs_next_state), state, best_control[reachable_state][0], next_state])
-            # print(state, best_control[reachable_state][0], next_state, self.find_abs_state(state), abs_next_state)
+
 
     return result
 
@@ -68,7 +68,7 @@ def fin(args):
     abs_state_lower_bound = stateLowerBound + stateResolution * np.array(abs_state_index)
     abs_state_upper_bound = abs_state_lower_bound + stateResolution
 
-    predecessors = {}
+    predecessors = dict()
     for sample in record:
         key = tuple(find_abs_state(sample[0], stateLowerBound, stateResolution))
         if key not in predecessors:
@@ -84,18 +84,13 @@ def fin(args):
 
         # print(pre_state_index, abs_state_index, len(predecessors[pre_state_index]))
         for sample in predecessors[pre_state_index]:
-            next_state_dist_to_border = np.minimum(np.array(sample[2] - abs_state_lower_bound), np.array(abs_state_upper_bound - sample[2]))
-            grid_index = -1
-
-            for idx in np.ndindex(state_grid.shape[:-1]):
-                grid_index += 1
-                point = state_grid[idx] + pre_state_lower_bound
-                pre_state_dist_to_border = np.abs(sample[0] - point) + half_resolution
-
-                delta_f = pre_state_dist_to_border @ np.array(dynamics.max_jacobian(sample[1])).T
-                if target_size[grid_index] < np.min(next_state_dist_to_border - delta_f):
-                    target_size[grid_index] = np.min(next_state_dist_to_border - delta_f)
-        
+            next_state_dist_to_border = np.minimum(sample[2] - abs_state_lower_bound, abs_state_upper_bound - sample[2])
+            points = state_grid.reshape(-1, stateDimension) + pre_state_lower_bound
+            pre_state_dist_to_border = np.abs(sample[0] - points) + half_resolution
+            delta_f = pre_state_dist_to_border @ np.array(dynamics.max_jacobian(sample[1])).T
+            available_freedom = next_state_dist_to_border - delta_f
+            min_available_freedom = np.min(available_freedom, axis=1)
+            target_size = np.maximum(target_size, min_available_freedom)
 
         if np.min(target_size) > 0:
             #print(f'For every continuous state in {np.array(pre_state_index)}, these exist a control input such that the next state of the nominal system is inside target set of abstract state {abs_state_index}')
@@ -192,7 +187,7 @@ class Abstraction:
             for abs_state in np.ndindex(tuple(self.absDimension))
         ]
 
-        results = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=50)(delayed(gen)(args) for args in gen_args)
+        results = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=1)(delayed(gen)(args) for args in gen_args)
 
 
 
@@ -247,7 +242,7 @@ class Abstraction:
         ]
 
         print("start finding actions")
-        results = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=50)(delayed(fin)(args) for args in fin_args)
+        results = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=1)(delayed(fin)(args) for args in fin_args)
 
 
 
@@ -259,11 +254,12 @@ class Abstraction:
         print("Actions are found")
 
     def generate_noise_samples(self):
+        np.random.seed(42)
         self.noise_samples = np.random.uniform(-0.5*self.stateResolution*self.noiseLevel, 0.5*self.stateResolution*self.noiseLevel, (self.numNoiseSamples, self.stateDimension))
 
     def find_transitions(self):
         self.partition = {
-            'state_variables': ['x','y'],
+            'state_variables': [f'x{i+1}' for i in range(self.stateDimension)],
             'dim': self.stateDimension,
             'lb': self.stateLowerBound,
             'ub': self.stateUpperBound,
@@ -321,7 +317,7 @@ class Abstraction:
                 
                 trans_args.append(([index, action[1]], self.numNoiseSamples, inverse_confidence, self.partition, clusters, probability_table))
         
-        outputs = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=50)(delayed(compute_intervals)(*args) for args in trans_args)
+        outputs = Parallel(n_jobs=-1, backend='loky', max_nbytes=None, verbose=1)(delayed(compute_intervals)(*args) for args in trans_args)
         for output in outputs:
             self.transitions[output[0][0]].append([output[1], output[0][1]])
 

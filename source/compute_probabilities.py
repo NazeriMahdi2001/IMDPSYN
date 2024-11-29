@@ -64,10 +64,6 @@ def compute_intervals(etc, Nsamples, inverse_confidence, partition, clusters, pr
         print('imin:', imin)
         print('imax:', imax)
 
-    # Epsilon for Hoeffding's inequality
-    epsilon = np.sqrt(1 / (2 * Nsamples) * np.log(
-        2 / inverse_confidence))
-
     counts_goal_lb = 0
     counts_goal_ub = 0
 
@@ -176,29 +172,24 @@ def compute_intervals(etc, Nsamples, inverse_confidence, partition, clusters, pr
     counts = np.array(counts_header + counts_nonzero, dtype=int)
 
     # Compute probability intervals for transitioning outside the partition
-    outOfPartition_lb = np.maximum(0, counts_outOfPartition_lb / Nsamples - epsilon)
-    outOfPartition_ub = 1 - probability_table[counts_outOfPartition_ub, 0] # TODO: Integrate with this table
+    outOfPartition_lb = probability_table[Nsamples - counts_outOfPartition_lb, 0]
+    outOfPartition_ub = probability_table[Nsamples - counts_outOfPartition_ub, 1] # TODO: Integrate with this table
 
     # Counts can have length zero if all samples are outside the partition
     if len(counts) > 0:
-        # UB nr. of discarded samples (as per scenario approach) is total nr. of samples minus the LB nr. we counted
-        discarded_samples_ub = np.minimum(Nsamples - counts[:, 1], Nsamples)
-
         # Compute lower bound probability
-        probability_lb = probability_table[discarded_samples_ub, 0] # TODO: Integrate with this table
+        probability_lb = probability_table[Nsamples - counts[:, 1], 0] # TODO: Integrate with this table
 
         # Compute upper bound probability either with Hoeffding's bound
         # TODO: Check how we approach that here (scenario approach vs. Hoeffding's)
-        probability_ub = np.minimum(1, counts[:, 2] / Nsamples + epsilon)
+        probability_ub = probability_table[Nsamples - counts[:, 2], 1]
 
         # Take average sample count to compute approximate (precise) transition probabilities
-        probability_approx = counts[:, 1:3].mean(axis=1) / Nsamples
         successor_idxs = counts[:, 0]
 
     else:
         probability_lb = np.array([])
         probability_ub = np.array([])
-        probability_approx = np.array([])
         successor_idxs = np.array([])
 
     nr_decimals = 5 # Number of decimals to use for probability intervals (more decimals means larger file sizes)
@@ -221,21 +212,10 @@ def compute_intervals(etc, Nsamples, inverse_confidence, partition, clusters, pr
                       str(outOfPartition_lb) + ',' + \
                       str(outOfPartition_ub) + ']'
 
-    # #### POINT ESTIMATE PROBABILITIES
-    # probability_approx = np.round(probability_approx, nr_decimals)
-
-    # # Create approximate prob. strings (only entries for prob > 0)
-    # approx_strings = [str(p) for p in probability_approx]
-
-    # # Compute approximate transition probability to go outside the partition
-    # outOfPartition_approx = np.round(1 - sum(probability_approx), nr_decimals)
-
     returnDict = {
         'successor_idxs': successor_idxs,
         'interval_strings': interval_strings,
-        # 'approx_strings': approx_strings,
         'outOfPartition_interval_string': outOfPartition_string,
-        # 'outOfPartition_approx': outOfPartition_approx,
     }
 
     return [etc, returnDict]

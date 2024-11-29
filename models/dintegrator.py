@@ -1,9 +1,9 @@
 import numpy as np
 
 class DoubleIntegrator:
-    def __init__(self, time_step=1, k=1e-4):
+    def __init__(self, time_step=1, k=5e-4):
         self.time_step = time_step
-
+        self.k = k        
         self.pos = 0.0
         self.vel = 0.0
 
@@ -32,7 +32,7 @@ class DoubleIntegrator:
         d_1_d_1 = 1
         d_1_d_2 = self.time_step
         d_2_d_1 = 0
-        d_2_d_2 = 2
+        d_2_d_2 = 1.93
 
         max_jacobian_matrix = np.array([
             [d_1_d_1, d_1_d_2],
