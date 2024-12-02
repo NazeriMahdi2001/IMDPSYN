@@ -1,9 +1,9 @@
 import numpy as np
 
 class DoubleIntegrator:
-    def __init__(self, time_step=1, k=5e-4):
+    def __init__(self, time_step=1, k=1e-5):
         self.time_step = time_step
-        self.k = k        
+        self.k = k
         self.pos = 0.0
         self.vel = 0.0
 
@@ -27,12 +27,12 @@ class DoubleIntegrator:
         
         return self.get_state()
     
-    def max_jacobian(self, control):
+    def max_jacobian(self, state, control):
         # Partial derivatives of the dynamics equations with respect to angle and angular velocity
         d_1_d_1 = 1
         d_1_d_2 = self.time_step
         d_2_d_1 = 0
-        d_2_d_2 = 1.93
+        d_2_d_2 = 1 + 3 * self.k * self.time_step * (abs(state[1])+1)**2
 
         max_jacobian_matrix = np.array([
             [d_1_d_1, d_1_d_2],

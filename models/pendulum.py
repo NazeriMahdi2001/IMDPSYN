@@ -58,7 +58,7 @@ class InvertedPendulum:
 
         for u in torque:
             new_angle = self.angle + self.time_step * self.angular_velocity
-            new_angular_velocity = self.angular_velocity + self.time_step * (- (self.gravity / self.length) * np.sin(self.angle) + (1 / (self.mass * self.length**2)) * u)
+            new_angular_velocity = self.angular_velocity + self.time_step * (- (self.gravity / self.length) * np.sin(-self.angle) + (1 / (self.mass * self.length**2)) * u)
 
             # Normalize angle to [-π, π]
             new_angle = (new_angle + np.pi) % (2 * np.pi) - np.pi
@@ -68,7 +68,7 @@ class InvertedPendulum:
            
         return self.get_state()
     
-    def max_jacobian(self, torque):
+    def max_jacobian(self, state, torque):
         """
         Compute the elements-wise absolute maximum of Jacobian matrix of the system dynamics with respect to the state variables.
 
