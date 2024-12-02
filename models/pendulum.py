@@ -1,7 +1,7 @@
 import numpy as np
 
 class InvertedPendulum:
-    def __init__(self, mass=1.0, length=1.0, gravity=9.81, time_step=0.05):
+    def __init__(self, mass=1.0, length=1.0, gravity=9.81, time_step=0.1):
         """
         Initialize the inverted pendulum system.
 
@@ -61,7 +61,7 @@ class InvertedPendulum:
             new_angular_velocity = self.angular_velocity + self.time_step * (- (self.gravity / self.length) * np.sin(-self.angle) + (1 / (self.mass * self.length**2)) * u)
 
             # Normalize angle to [-π, π]
-            new_angle = (new_angle + np.pi) % (2 * np.pi) - np.pi
+            # new_angle = (new_angle + np.pi) % (2 * np.pi) - np.pi
 
             self.angle = new_angle
             self.angular_velocity = new_angular_velocity

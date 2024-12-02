@@ -37,10 +37,10 @@ with open('prism/abstraction.sta', 'r') as file:
 def parse_list(value):
     return np.array(ast.literal_eval(value))
 
-config_file = 'models/dintegrator.conf'
-# config_file = 'models/pendulum.conf'
+# config_file = 'models/dintegrator.conf'
+config_file = 'models/pendulum.conf'
 # config_file = 'models/car2d.conf'
-system = DoubleIntegrator()
+system = InvertedPendulum()
 
 
 config = configparser.ConfigParser()
@@ -68,65 +68,84 @@ noiseLevel = float(config['DEFAULT']['noiseLevel'])
 
 prismIntervalVector = np.genfromtxt('prismPRISM_interval_vector.csv')
 prismIntervalVector = prismIntervalVector[3:]
-prismIntervalVector = prismIntervalVector.reshape(np.round(((stateUpperBound - stateLowerBound) / stateResolution)).astype(int)).T
+absDimension = ((stateUpperBound - stateLowerBound + stateResolution - 1e-6) // stateResolution).astype(int)
+prismIntervalVector = prismIntervalVector.reshape(absDimension).T
 
-plt.imshow(prismIntervalVector, extent=(stateLowerBound[0], stateUpperBound[0], stateUpperBound[1], stateLowerBound[1]), aspect='auto', cmap='coolwarm')
-plt.colorbar(label='Interval Value')
-plt.xlabel('State Dimension 1')
-plt.ylabel('State Dimension 2')
 
-plt.xticks(np.arange(stateLowerBound[0], stateUpperBound[0] + stateResolution[0], 4*stateResolution[0]))
-plt.yticks(np.arange(stateLowerBound[1], stateUpperBound[1] + stateResolution[1], 4*stateResolution[1]))
+plt.imshow(prismIntervalVector, extent=(stateLowerBound[0], stateUpperBound[0], stateUpperBound[1], stateLowerBound[1]), aspect='auto', cmap='coolwarm', vmin=0.0, vmax=1.0)
+plt.colorbar()
+# plt.xlabel(r'$x_1$')
+# plt.ylabel(r'$x_2$')
+
+plt.xlabel(r'$\theta$', fontsize=14)
+plt.ylabel(r'$\omega$', fontsize=14, rotation='horizontal')
+
+plt.minorticks_on()
+plt.tick_params(which='both', width=1)
+plt.tick_params(which='major', length=7)
+plt.tick_params(which='minor', length=4)
+
+plt.gca().xaxis.set_major_locator(plt.LinearLocator(numticks=5))
+plt.gca().yaxis.set_major_locator(plt.LinearLocator(numticks=6))
+
+plt.gca().xaxis.set_minor_locator(plt.FixedLocator(np.arange(stateLowerBound[0], stateUpperBound[0], stateResolution[0])))
+plt.gca().yaxis.set_minor_locator(plt.FixedLocator(np.arange(stateLowerBound[1], stateUpperBound[1], stateResolution[1])))
+
+plt.grid(which='both', linestyle='--', linewidth=0.05)
+
 plt.gca().invert_yaxis()
+plt.savefig('prism_interval_vector_heatmap.pdf', dpi=500, bbox_inches='tight')
 
+# plt.figure(figsize=[10, 10])
+# plt.xticks(np.arange(stateLowerBound[0], stateUpperBound[0] + stateResolution[0], stateResolution[0]))
+# plt.yticks(np.arange(stateLowerBound[1], stateUpperBound[1] + stateResolution[1], stateResolution[1]))
+# plt.xlim(stateLowerBound[0], stateUpperBound[0])
+# plt.ylim(stateLowerBound[1], stateUpperBound[1])
+# plt.xlabel(r'$X_1$')
+# plt.ylabel(r'$X_2$')
+# plt.grid(True)
 
-plt.savefig('prism_interval_vector_heatmap.png', dpi=500, bbox_inches='tight')
+# x = np.array([-5.43, -2.34])
+x = np.array([-2.27, -1.73])
+
+# init = tuple(((x - stateLowerBound) // stateResolution).astype(int))
+# for _ in range(100):
+#     if init in policy:
+#         next = policy[init]
+#         if next in trans:
+#             next = trans[next]
+#             # draw an arrow from init to next
+#             a = stateLowerBound + np.array(init) * stateResolution + stateResolution / 2
+#             b = stateLowerBound + np.array(next) * stateResolution + stateResolution / 2
+#             plt.arrow(a[0], a[1], b[0] - a[0], b[1] - a[1], head_width=0.2, head_length=0.05, fc='b', ec='b').set_zorder(10)
+#             init = next
+
+# # add the goal set
+# goalLowerBound = np.array(goalLowerBound)
+# goalUpperBound = np.array(goalUpperBound)
+# plt.fill_between([goalLowerBound[0], goalUpperBound[0]], goalLowerBound[1], goalUpperBound[1], color='g', alpha=0.2)
+
+# for i in range(len(criticalLowerBound)):
+#     clb = np.array(criticalLowerBound[i])
+#     cub = np.array(criticalUpperBound[i])
+#     plt.fill_between([clb[0], cub[0]], clb[1], cub[1], color='r', alpha=0.2)
+
+# plt.savefig('trajectory.pdf', dpi=500, bbox_inches='tight')
 
 plt.figure(figsize=[10, 10])
-plt.xticks(np.arange(stateLowerBound[0], stateUpperBound[0] + stateResolution[0], stateResolution[0]))
-plt.yticks(np.arange(stateLowerBound[1], stateUpperBound[1] + stateResolution[1], stateResolution[1]))
 plt.xlim(stateLowerBound[0], stateUpperBound[0])
 plt.ylim(stateLowerBound[1], stateUpperBound[1])
-plt.xlabel('State Dimension 1')
-plt.ylabel('State Dimension 2')
-plt.grid(True)
+# plt.xlabel(r'$x_1$', fontsize=20)
+# plt.ylabel(r'$x_2$', fontsize=20)
 
-x = np.array([5, -0.84])
-init = tuple(((x - stateLowerBound) // stateResolution).astype(int))
-for _ in range(100):
-    if init in policy:
-        next = policy[init]
-        if next in trans:
-            next = trans[next]
-            # draw an arrow from init to next
-            a = stateLowerBound + np.array(init) * stateResolution + stateResolution / 2
-            b = stateLowerBound + np.array(next) * stateResolution + stateResolution / 2
-            plt.arrow(a[0], a[1], b[0] - a[0], b[1] - a[1], head_width=0.2, head_length=0.05, fc='b', ec='b').set_zorder(10)
-            init = next
-
-# add the goal set
-goalLowerBound = np.array(goalLowerBound)
-goalUpperBound = np.array(goalUpperBound)
-plt.fill_between([goalLowerBound[0], goalUpperBound[0]], goalLowerBound[1], goalUpperBound[1], color='g', alpha=0.2)
-
-for i in range(len(criticalLowerBound)):
-    clb = np.array(criticalLowerBound[i])
-    cub = np.array(criticalUpperBound[i])
-    plt.fill_between([clb[0], cub[0]], clb[1], cub[1], color='r', alpha=0.2)
-
-plt.savefig('trajectory.png', dpi=500, bbox_inches='tight')
-
-plt.figure(figsize=[10, 10])
-plt.xticks(np.arange(stateLowerBound[0], stateUpperBound[0] + stateResolution[0], stateResolution[0]))
-plt.yticks(np.arange(stateLowerBound[1], stateUpperBound[1] + stateResolution[1], stateResolution[1]))
-plt.xlim(stateLowerBound[0], stateUpperBound[0])
-plt.ylim(stateLowerBound[1], stateUpperBound[1])
-plt.xlabel('X1')
-plt.ylabel('X2')
-plt.grid(True)
+plt.xlabel(r'$\theta$', fontsize=20)
+plt.ylabel(r'$\omega$', fontsize=20, rotation='horizontal')
 
 init = tuple(((x - stateLowerBound) // stateResolution).astype(int))
-plt.scatter(x[0], x[1], c='blue', s=50, marker='s').set_zorder(11)
+
+print(prismIntervalVector[init])
+
+plt.scatter(x[0], x[1], c='black', s=50, marker='*').set_zorder(11)
 voxelResolution = stateResolution / numDivisions
 for _ in range(100):
     if init in policy:
@@ -142,21 +161,34 @@ for _ in range(100):
             ind = (residue // voxelResolution).astype(int)
             control = refined_policy[*ind, :]
             nx = system.set_state(*x).update_dynamics(control) + np.random.uniform(-0.5*stateResolution*noiseLevel, 0.5*stateResolution*noiseLevel, stateDimension)
-            plt.scatter(x[0], x[1], c='black', s=5).set_zorder(11)
-            plt.arrow(x[0], x[1], nx[0] - x[0], nx[1] - x[1], head_width=0, head_length=0, fc='blue', ec='blue').set_zorder(10)
+            plt.scatter(x[0], x[1], c='navy', s=25, marker="X").set_zorder(11)
+            plt.arrow(x[0], x[1], nx[0] - x[0], nx[1] - x[1], width=0.01, head_width=0, head_length=0, fc='navy', ec='navy').set_zorder(10)
             
             init = tuple(((nx - stateLowerBound) // stateResolution).astype(int))
             x = nx
 
-plt.scatter(x[0], x[1], c='blue', s=50).set_zorder(11)
+plt.scatter(x[0], x[1], c='black', s=50, marker='s').set_zorder(11)
 # add the goal set
 goalLowerBound = np.array(goalLowerBound)
 goalUpperBound = np.array(goalUpperBound)
-plt.fill_between([goalLowerBound[0], goalUpperBound[0]], goalLowerBound[1], goalUpperBound[1], color='g', alpha=0.2)
+plt.fill_between([goalLowerBound[0], goalUpperBound[0]], goalLowerBound[1], goalUpperBound[1], color='g', alpha=0.3, linewidth=0.0)
 
 for i in range(len(criticalLowerBound)):
     clb = np.array(criticalLowerBound[i])
     cub = np.array(criticalUpperBound[i])
-    plt.fill_between([clb[0], cub[0]], clb[1], cub[1], color='r', alpha=0.2)
+    plt.fill_between([clb[0], cub[0]], clb[1], cub[1], color='r', alpha=0.3, linewidth=0.0)
 
-plt.savefig('trajectory_refined.png', dpi=500, bbox_inches='tight')
+plt.minorticks_on()
+plt.tick_params(which='both', width=1)
+plt.tick_params(which='major', length=7)
+plt.tick_params(which='minor', length=4)
+
+plt.gca().xaxis.set_major_locator(plt.LinearLocator(numticks=5))
+plt.gca().yaxis.set_major_locator(plt.LinearLocator(numticks=6))
+
+plt.gca().xaxis.set_minor_locator(plt.FixedLocator(np.arange(stateLowerBound[0], stateUpperBound[0], stateResolution[0])))
+plt.gca().yaxis.set_minor_locator(plt.FixedLocator(np.arange(stateLowerBound[1], stateUpperBound[1], stateResolution[1])))
+
+plt.grid(which='both', linestyle='--', linewidth=0.1)
+
+plt.savefig('trajectory_refined.pdf', dpi=500, bbox_inches='tight')

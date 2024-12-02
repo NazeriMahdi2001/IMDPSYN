@@ -14,7 +14,7 @@ import copy
 
 def find_abs_state(state, stateLowerBound, stateResolution):
         # Find the abstract state of a continuous state
-        return np.floor((state - stateLowerBound) / stateResolution).astype(int)
+        return np.floor((state - stateLowerBound) // stateResolution).astype(int)
 
 def if_within(state, lowerBound, upperBound, epsilon=1e-6):
         return np.all(state >= lowerBound + epsilon) and np.all(state <= upperBound - epsilon)
@@ -109,7 +109,7 @@ def fin(args):
             refined_policy[min_available_freedom > target_size, :] = sample[1]
             target_size = np.maximum(target_size, min_available_freedom)
 
-        if np.min(target_size) > -0.1:
+        if np.min(target_size) > -0:
             #print(f'For every continuous state in {np.array(pre_state_index)}, these exist a control input such that the next state of the nominal system is inside target set of abstract state {abs_state_index}')
             #print(f'i = {np.array(pre_state_index)}, j = {np.array(abs_state_index)}, c_i = {np.array(pre_state_lower_bound)} to {np.array(pre_state_upper_bound)}, c_j = {np.array(abs_state_lower_bound)} to {np.array(abs_state_upper_bound)}, t_i_to_j = {np.array(abs_state_lower_bound + np.min(target_size, axis=0))} to {np.array(abs_state_upper_bound) - np.min(target_size, axis=0)}')
             policy_filename = f'policy/policy_{pre_state_index}_{abs_state_index}.npy'
@@ -164,7 +164,7 @@ class Abstraction:
         self.numDivisions = int(config['DEFAULT']['numDivisions'])
 
         # Number of abstract cells in each dimension
-        self.absDimension = np.round((self.stateUpperBound - self.stateLowerBound) / self.stateResolution).astype(int)
+        self.absDimension = ((self.stateUpperBound - self.stateLowerBound + self.stateResolution - 1e-6) // self.stateResolution).astype(int)
 
         self.numNoiseSamples= int(config['DEFAULT']['numNoiseSamples'])
         self.noiseLevel = float(config['DEFAULT']['noiseLevel'])
@@ -208,7 +208,7 @@ class Abstraction:
             for abs_state in np.ndindex(tuple(self.absDimension))
         ]
 
-        results = Parallel(n_jobs=256, verbose=50)(delayed(gen)(args) for args in gen_args)
+        results = Parallel(n_jobs=-1, verbose=1)(delayed(gen)(args) for args in gen_args)
 
         # Flatten the list of results
         for result in results:
@@ -261,7 +261,7 @@ class Abstraction:
         ]
 
         print("start finding actions")
-        results = Parallel(n_jobs=-1, backend='loky', verbose=1)(delayed(fin)(args) for args in fin_args)
+        results = Parallel(n_jobs=-1, verbose=1)(delayed(fin)(args) for args in fin_args)
 
         # Flatten the list of results
         for result in results:
@@ -334,7 +334,7 @@ class Abstraction:
                 
                 trans_args.append(([index, action[1]], self.numNoiseSamples, inverse_confidence, self.partition, clusters, probability_table))
         
-        outputs = Parallel(n_jobs=256, verbose=50)(delayed(compute_intervals)(*args) for args in trans_args)
+        outputs = Parallel(n_jobs=-1, verbose=1)(delayed(compute_intervals)(*args) for args in trans_args)
         for output in outputs:
             self.transitions[output[0][0]].append([output[1], output[0][1]])
 
