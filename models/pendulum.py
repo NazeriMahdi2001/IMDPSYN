@@ -81,11 +81,10 @@ class InvertedPendulum:
         # Partial derivatives of the dynamics equations with respect to angle and angular velocity
         d_angle_d_angle = 1
         d_angle_d_angular_velocity = self.time_step
-        d_angular_velocity_d_angle = -self.time_step * (self.gravity / self.length) * np.cos(self.angle)
+        d_angular_velocity_d_angle = self.time_step * (self.gravity / self.length)
         d_angular_velocity_d_angular_velocity = 1
 
         # Construct the elements-wise absolute maximum Jacobian matrix
-        d_angular_velocity_d_angle = self.time_step * (self.gravity / self.length)
         max_jacobian_matrix = np.array([
             [d_angle_d_angle, d_angle_d_angular_velocity],
             [d_angular_velocity_d_angle, d_angular_velocity_d_angular_velocity]

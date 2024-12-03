@@ -10,7 +10,7 @@ matplotlib.use("pgf")
 matplotlib.rcParams.update({
     "pgf.texsystem": "pdflatex",
     'font.family': 'serif',
-    'font.size' : 11,
+    'font.size' : 18,
     'text.usetex': True,
     'pgf.rcfonts': False,
 })
@@ -41,7 +41,8 @@ def parse_list(value):
 config_file = 'models/pendulum.conf'
 # config_file = 'models/car2d.conf'
 system = InvertedPendulum()
-
+# system = DoubleIntegrator()
+# system = Robot2D()
 
 config = configparser.ConfigParser()
 config.read(config_file)
@@ -74,11 +75,15 @@ prismIntervalVector = prismIntervalVector.reshape(absDimension).T
 
 plt.imshow(prismIntervalVector, extent=(stateLowerBound[0], stateUpperBound[0], stateUpperBound[1], stateLowerBound[1]), aspect='auto', cmap='coolwarm', vmin=0.0, vmax=1.0)
 plt.colorbar()
-# plt.xlabel(r'$x_1$')
-# plt.ylabel(r'$x_2$')
 
-plt.xlabel(r'$\theta$', fontsize=14)
-plt.ylabel(r'$\omega$', fontsize=14, rotation='horizontal')
+# plt.xlabel(r'$x$', fontsize=16)
+# plt.ylabel(r'$v$', fontsize=16, rotation='horizontal')
+
+# plt.xlabel(r'$x_1$', fontsize=16)
+# plt.ylabel(r'$x_2$', fontsize=16, rotation='horizontal')
+
+plt.xlabel(r'$\theta$', fontsize=16)
+plt.ylabel(r'$\omega$', fontsize=16, rotation='horizontal')
 
 plt.minorticks_on()
 plt.tick_params(which='both', width=1)
@@ -107,47 +112,51 @@ plt.savefig('prism_interval_vector_heatmap.pdf', dpi=500, bbox_inches='tight')
 
 # x = np.array([-5.43, -2.34])
 x = np.array([-2.27, -1.73])
+# x = np.array([-8.43, 8.34])
 
-# init = tuple(((x - stateLowerBound) // stateResolution).astype(int))
-# for _ in range(100):
-#     if init in policy:
-#         next = policy[init]
-#         if next in trans:
-#             next = trans[next]
-#             # draw an arrow from init to next
-#             a = stateLowerBound + np.array(init) * stateResolution + stateResolution / 2
-#             b = stateLowerBound + np.array(next) * stateResolution + stateResolution / 2
-#             plt.arrow(a[0], a[1], b[0] - a[0], b[1] - a[1], head_width=0.2, head_length=0.05, fc='b', ec='b').set_zorder(10)
-#             init = next
+init = tuple(((x - stateLowerBound) // stateResolution).astype(int))
+for _ in range(100):
+    if init in policy:
+        next = policy[init]
+        if next in trans:
+            next = trans[next]
+            # draw an arrow from init to next
+            a = stateLowerBound + np.array(init) * stateResolution + stateResolution / 2
+            b = stateLowerBound + np.array(next) * stateResolution + stateResolution / 2
+            plt.arrow(a[0], a[1], b[0] - a[0], b[1] - a[1], head_width=0.2, head_length=0.05, fc='b', ec='b').set_zorder(10)
+            init = next
 
-# # add the goal set
-# goalLowerBound = np.array(goalLowerBound)
-# goalUpperBound = np.array(goalUpperBound)
-# plt.fill_between([goalLowerBound[0], goalUpperBound[0]], goalLowerBound[1], goalUpperBound[1], color='g', alpha=0.2)
+# add the goal set
+goalLowerBound = np.array(goalLowerBound)
+goalUpperBound = np.array(goalUpperBound)
+plt.fill_between([goalLowerBound[0], goalUpperBound[0]], goalLowerBound[1], goalUpperBound[1], color='g', alpha=0.2)
 
-# for i in range(len(criticalLowerBound)):
-#     clb = np.array(criticalLowerBound[i])
-#     cub = np.array(criticalUpperBound[i])
-#     plt.fill_between([clb[0], cub[0]], clb[1], cub[1], color='r', alpha=0.2)
+for i in range(len(criticalLowerBound)):
+    clb = np.array(criticalLowerBound[i])
+    cub = np.array(criticalUpperBound[i])
+    plt.fill_between([clb[0], cub[0]], clb[1], cub[1], color='r', alpha=0.2)
 
-# plt.savefig('trajectory.pdf', dpi=500, bbox_inches='tight')
+plt.savefig('trajectory.pdf', dpi=500, bbox_inches='tight')
 
 plt.figure(figsize=[10, 10])
 plt.xlim(stateLowerBound[0], stateUpperBound[0])
 plt.ylim(stateLowerBound[1], stateUpperBound[1])
-# plt.xlabel(r'$x_1$', fontsize=20)
-# plt.ylabel(r'$x_2$', fontsize=20)
 
-plt.xlabel(r'$\theta$', fontsize=20)
-plt.ylabel(r'$\omega$', fontsize=20, rotation='horizontal')
+# plt.xlabel(r'$x_1$', fontsize=16)
+# plt.ylabel(r'$x_2$', fontsize=16, rotation='horizontal')
+
+# plt.xlabel(r'$x$', fontsize=16)
+# plt.ylabel(r'$v$', fontsize=16, rotation='horizontal')
+
+plt.xlabel(r'$\theta$', fontsize=16)
+plt.ylabel(r'$\omega$', fontsize=16, rotation='horizontal')
 
 init = tuple(((x - stateLowerBound) // stateResolution).astype(int))
-
 print(prismIntervalVector[init])
 
 plt.scatter(x[0], x[1], c='black', s=50, marker='*').set_zorder(11)
 voxelResolution = stateResolution / numDivisions
-for _ in range(100):
+for i in range(100):
     if init in policy:
         next = policy[init]
         if next in trans:
@@ -160,8 +169,12 @@ for _ in range(100):
             residue = x - init * stateResolution - stateLowerBound
             ind = (residue // voxelResolution).astype(int)
             control = refined_policy[*ind, :]
+            
             nx = system.set_state(*x).update_dynamics(control) + np.random.uniform(-0.5*stateResolution*noiseLevel, 0.5*stateResolution*noiseLevel, stateDimension)
-            plt.scatter(x[0], x[1], c='navy', s=25, marker="X").set_zorder(11)
+            # nx = system.set_state(*x).update_dynamics(control) + np.random.normal(scale=noiseLevel, size=stateDimension)
+
+            if i > 0:
+                plt.scatter(x[0], x[1], c='navy', s=25, marker="X").set_zorder(11)
             plt.arrow(x[0], x[1], nx[0] - x[0], nx[1] - x[1], width=0.01, head_width=0, head_length=0, fc='navy', ec='navy').set_zorder(10)
             
             init = tuple(((nx - stateLowerBound) // stateResolution).astype(int))
@@ -190,5 +203,8 @@ plt.gca().xaxis.set_minor_locator(plt.FixedLocator(np.arange(stateLowerBound[0],
 plt.gca().yaxis.set_minor_locator(plt.FixedLocator(np.arange(stateLowerBound[1], stateUpperBound[1], stateResolution[1])))
 
 plt.grid(which='both', linestyle='--', linewidth=0.1)
+
+plt.gca().set_xticklabels([])
+plt.gca().set_yticklabels([])
 
 plt.savefig('trajectory_refined.pdf', dpi=500, bbox_inches='tight')

@@ -41,7 +41,7 @@ def gen(args):
             abs_next_upper_bound = abs_next_lower_bound + stateResolution
 
             next_state_distance_to_border = np.minimum(np.array(next_state - abs_next_lower_bound), np.array(abs_next_upper_bound - next_state))
-            next_state_freedom = np.min(next_state_distance_to_border / np.dot(stateResolution, dynamics.max_jacobian(state_index, control).T))
+            next_state_freedom = np.min(next_state_distance_to_border / np.dot(stateResolution, dynamics.max_jacobian(state, control).T))
 
             # keep the control input that gives the maximum freedom - which is the maximum distance to the border
             abs_next_state = tuple(abs_next_state)
@@ -103,13 +103,13 @@ def fin(args):
             next_state_dist_to_border = np.minimum(sample[2] - abs_state_lower_bound, abs_state_upper_bound - sample[2])
             points = state_grid.reshape(-1, stateDimension) + pre_state_lower_bound
             pre_state_dist_to_border = np.abs(sample[0] - points) + half_resolution
-            delta_f = pre_state_dist_to_border @ np.array(dynamics.max_jacobian(pre_state_index, sample[1])).T
+            delta_f = pre_state_dist_to_border @ np.array(dynamics.max_jacobian(pre_state_lower_bound, sample[1])).T
             available_freedom = next_state_dist_to_border - delta_f
             min_available_freedom = np.min(available_freedom, axis=1)
             refined_policy[min_available_freedom > target_size, :] = sample[1]
             target_size = np.maximum(target_size, min_available_freedom)
 
-        if np.min(target_size) > -0:
+        if np.min(target_size) > -0.1:
             #print(f'For every continuous state in {np.array(pre_state_index)}, these exist a control input such that the next state of the nominal system is inside target set of abstract state {abs_state_index}')
             #print(f'i = {np.array(pre_state_index)}, j = {np.array(abs_state_index)}, c_i = {np.array(pre_state_lower_bound)} to {np.array(pre_state_upper_bound)}, c_j = {np.array(abs_state_lower_bound)} to {np.array(abs_state_upper_bound)}, t_i_to_j = {np.array(abs_state_lower_bound + np.min(target_size, axis=0))} to {np.array(abs_state_upper_bound) - np.min(target_size, axis=0)}')
             policy_filename = f'policy/policy_{pre_state_index}_{abs_state_index}.npy'
@@ -272,6 +272,7 @@ class Abstraction:
 
     def generate_noise_samples(self):
         np.random.seed(42)
+        # self.noise_samples = np.random.normal(scale=self.noiseLevel, size=(self.numNoiseSamples, self.stateDimension))
         self.noise_samples = np.random.uniform(-0.5*self.stateResolution*self.noiseLevel, 0.5*self.stateResolution*self.noiseLevel, (self.numNoiseSamples, self.stateDimension))
 
     def find_transitions(self):

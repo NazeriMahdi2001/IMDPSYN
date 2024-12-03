@@ -1,7 +1,7 @@
 import numpy as np
 
 class DoubleIntegrator:
-    def __init__(self, time_step=1, k=1e-5):
+    def __init__(self, time_step=1, k=0.0075):
         self.time_step = time_step
         self.k = k
         self.pos = 0.0
