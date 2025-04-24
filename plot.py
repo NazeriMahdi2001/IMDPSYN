@@ -6,14 +6,14 @@ from models.pendulum import InvertedPendulum
 from models.dintegrator import DoubleIntegrator
 from models.car2d import Robot2D
 
-matplotlib.use("pgf")
-matplotlib.rcParams.update({
-    "pgf.texsystem": "pdflatex",
-    'font.family': 'serif',
-    'font.size' : 18,
-    'text.usetex': True,
-    'pgf.rcfonts': False,
-})
+# matplotlib.use("pgf")
+# matplotlib.rcParams.update({
+#     "pgf.texsystem": "pdflatex",
+#     'font.family': 'serif',
+#     'font.size' : 18,
+#     'text.usetex': True,
+#     'pgf.rcfonts': False,
+# })
 
 policy = {}
 with open('prismPRISM_interval_policy.txt', 'r') as file:
@@ -37,12 +37,18 @@ with open('prism/abstraction.sta', 'r') as file:
 def parse_list(value):
     return np.array(ast.literal_eval(value))
 
-# config_file = 'models/dintegrator.conf'
-config_file = 'models/pendulum.conf'
-# config_file = 'models/car2d.conf'
-system = InvertedPendulum()
 # system = DoubleIntegrator()
-# system = Robot2D()
+# config_file = 'models/dintegrator.conf'
+# x = np.array([0.53, 0.34])
+
+# system = InvertedPendulum()
+# config_file = 'models/pendulum.conf'
+# x = np.array([-8.43, 8.34])
+
+system = Robot2D()
+config_file = 'models/car2d.conf'
+x = np.array([0.23, 0.37])
+
 
 config = configparser.ConfigParser()
 config.read(config_file)
@@ -68,7 +74,7 @@ numDivisions = int(config['DEFAULT']['numDivisions'])
 noiseLevel = float(config['DEFAULT']['noiseLevel'])
 
 prismIntervalVector = np.genfromtxt('prismPRISM_interval_vector.csv')
-prismIntervalVector = prismIntervalVector[3:]
+prismIntervalVector = prismIntervalVector[2:]
 absDimension = ((stateUpperBound - stateLowerBound + stateResolution - 1e-6) // stateResolution).astype(int)
 prismIntervalVector = prismIntervalVector.reshape(absDimension).T
 
@@ -79,11 +85,11 @@ plt.colorbar()
 # plt.xlabel(r'$x$', fontsize=16)
 # plt.ylabel(r'$v$', fontsize=16, rotation='horizontal')
 
-# plt.xlabel(r'$x_1$', fontsize=16)
-# plt.ylabel(r'$x_2$', fontsize=16, rotation='horizontal')
+plt.xlabel(r'$x$', fontsize=16)
+plt.ylabel(r'$y$', fontsize=16, rotation='horizontal')
 
-plt.xlabel(r'$\theta$', fontsize=16)
-plt.ylabel(r'$\omega$', fontsize=16, rotation='horizontal')
+# plt.xlabel(r'$\theta$', fontsize=16)
+# plt.ylabel(r'$\omega$', fontsize=16, rotation='horizontal')
 
 plt.minorticks_on()
 plt.tick_params(which='both', width=1)
@@ -110,12 +116,8 @@ plt.savefig('prism_interval_vector_heatmap.pdf', dpi=500, bbox_inches='tight')
 # plt.ylabel(r'$X_2$')
 # plt.grid(True)
 
-# x = np.array([-5.43, -2.34])
-x = np.array([-2.27, -1.73])
-# x = np.array([-8.43, 8.34])
-
 init = tuple(((x - stateLowerBound) // stateResolution).astype(int))
-for _ in range(100):
+for _ in range(1000):
     if init in policy:
         next = policy[init]
         if next in trans:
@@ -142,45 +144,46 @@ plt.figure(figsize=[10, 10])
 plt.xlim(stateLowerBound[0], stateUpperBound[0])
 plt.ylim(stateLowerBound[1], stateUpperBound[1])
 
-# plt.xlabel(r'$x_1$', fontsize=16)
-# plt.ylabel(r'$x_2$', fontsize=16, rotation='horizontal')
+plt.xlabel(r'$x$', fontsize=16)
+plt.ylabel(r'$y$', fontsize=16, rotation='horizontal')
 
 # plt.xlabel(r'$x$', fontsize=16)
 # plt.ylabel(r'$v$', fontsize=16, rotation='horizontal')
 
-plt.xlabel(r'$\theta$', fontsize=16)
-plt.ylabel(r'$\omega$', fontsize=16, rotation='horizontal')
+# plt.xlabel(r'$\theta$', fontsize=16)
+# plt.ylabel(r'$\omega$', fontsize=16, rotation='horizontal')
 
 init = tuple(((x - stateLowerBound) // stateResolution).astype(int))
 print(prismIntervalVector[init])
 
-plt.scatter(x[0], x[1], c='black', s=50, marker='*').set_zorder(11)
-voxelResolution = stateResolution / numDivisions
-for i in range(100):
-    if init in policy:
-        next = policy[init]
-        if next in trans:
-            next = trans[next]
-            # draw an arrow from init to next
-
-            policy_filename = f'policy/policy_{init}_{next}.npy'
-            refined_policy = np.load(policy_filename)
-
-            residue = x - init * stateResolution - stateLowerBound
-            ind = (residue // voxelResolution).astype(int)
-            control = refined_policy[*ind, :]
-            
-            nx = system.set_state(*x).update_dynamics(control) + np.random.uniform(-0.5*stateResolution*noiseLevel, 0.5*stateResolution*noiseLevel, stateDimension)
-            # nx = system.set_state(*x).update_dynamics(control) + np.random.normal(scale=noiseLevel, size=stateDimension)
-
-            if i > 0:
-                plt.scatter(x[0], x[1], c='navy', s=25, marker="X").set_zorder(11)
-            plt.arrow(x[0], x[1], nx[0] - x[0], nx[1] - x[1], width=0.01, head_width=0, head_length=0, fc='navy', ec='navy').set_zorder(10)
-            
-            init = tuple(((nx - stateLowerBound) // stateResolution).astype(int))
-            x = nx
-
 plt.scatter(x[0], x[1], c='black', s=50, marker='s').set_zorder(11)
+voxelResolution = stateResolution / numDivisions
+for _ in range(100):
+    current = init
+    state = x
+    for i in range(1000):
+        if current in policy:
+            next = policy[current]
+            if next in trans:
+                next = trans[next]
+                # draw an arrow from init to next
+
+                policy_filename = f'policy/policy_{current}_{next}.npy'
+                refined_policy = np.load(policy_filename)
+
+                residue = state - current * stateResolution - stateLowerBound
+                ind = (residue // voxelResolution).astype(int)
+                control = refined_policy[*ind, :]
+                
+                nstate = system.set_state(*state).update_dynamics(control) + np.random.uniform(-0.5*stateResolution*noiseLevel, 0.5*stateResolution*noiseLevel, stateDimension)
+                # nx = system.set_state(*x).update_dynamics(control) + np.random.normal(scale=noiseLevel, size=stateDimension)
+
+                # plt.scatter(state[0], state[1], c='black', s=5, marker=".", alpha=0.5).set_zorder(11)
+                plt.arrow(state[0], state[1], nstate[0] - state[0], nstate[1] - state[1], width=0.001, head_width=0, head_length=0, fc='grey', ec='grey', alpha=0.2).set_zorder(10)
+                
+                current = tuple(((nstate - stateLowerBound) // stateResolution).astype(int))
+                state = nstate
+    plt.scatter(state[0], state[1], c='black', s=15, marker=".", alpha=0.5).set_zorder(11)
 # add the goal set
 goalLowerBound = np.array(goalLowerBound)
 goalUpperBound = np.array(goalUpperBound)

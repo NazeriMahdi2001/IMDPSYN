@@ -4,4 +4,5 @@ __pycache__/
 .idea/
 prism/
 prism-4.8.1-linux64-x86/
+prism-4.8.1-mac64-arm/
 policy/
