@@ -39,15 +39,15 @@ def parse_list(value):
 
 # system = DoubleIntegrator()
 # config_file = 'models/dintegrator.conf'
-# x = np.array([0.53, 0.34])
+# x = np.array([-8.43, 8.34])
 
 # system = InvertedPendulum()
 # config_file = 'models/pendulum.conf'
-# x = np.array([-8.43, 8.34])
+# x = np.array([-2.27, -1.73])
 
 system = Robot2D()
 config_file = 'models/car2d.conf'
-x = np.array([0.23, 0.37])
+x = np.array([-9.73, -9.77])
 
 
 config = configparser.ConfigParser()

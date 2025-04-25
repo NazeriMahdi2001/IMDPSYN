@@ -11,16 +11,16 @@ from source.compute_probabilities import compute_intervals
 from joblib import Parallel, delayed
 import copy
 
-def convert_to_base7(i, stateDimension):
-    base7 = []
+def convert_to_base5(i, stateDimension):
+    base5 = []
     for _ in range(stateDimension):
-        base7.append(i % 7)
-        i //= 7
-    return base7
+        base5.append(i % 5)
+        i //= 5
+    return base5
 
 def find_abs_state(state, stateLowerBound, stateResolution):
     # Find the abstract state of a continuous state
-    return np.floor((state - stateLowerBound) // stateResolution).astype(int)
+    return np.floor((state - stateLowerBound) / stateResolution).astype(int)
 
 def if_within(state, lowerBound, upperBound, epsilon=1e-6):
         return np.all(state >= lowerBound + epsilon) and np.all(state <= upperBound - epsilon)
@@ -329,7 +329,7 @@ class Abstraction:
         count_transitions = 0
         for index in np.ndindex(tuple(self.absDimension)):
             for action in self.actions[index]:
-                count_transitions += 7**self.stateDimension + 2
+                count_transitions += 5**self.stateDimension + 2
 
         # We specify the probability with which a probability interval is wrong (i.e., 1 minus the confidence probability)
         inverse_confidence = 0.05 / (count_transitions + 1)
@@ -346,9 +346,9 @@ class Abstraction:
                 }
 
                 roi = {-1, -2}
-                for i in range(7**self.stateDimension):
-                    offset = np.array(convert_to_base7(i, self.stateDimension)) - 3
-                    neighbor = np.array(index) + np.array(offset)
+                for i in range(5**self.stateDimension):
+                    offset = np.array(convert_to_base5(i, self.stateDimension)) - 2
+                    neighbor = np.array(action[1]) + np.array(offset)
                     neighbor_tuple = tuple(neighbor)
                     if neighbor_tuple in self.partition['tup2idx']:
                         roi.add(self.partition['tup2idx'][neighbor_tuple])

@@ -47,11 +47,11 @@ def compute_intervals(etc, roi, absDimension, Nsamples, inverse_confidence, part
 
     for i in roi:
         binom = binomtest(k=counts_lb[i], n=Nsamples)
-        probs = binom.proportion_ci(confidence_level = 1 - inverse_confidence)
+        probs = binom.proportion_ci(confidence_level = 1 - inverse_confidence)#/Nsamples)
         low =   probs.low
         
         binom = binomtest(k=counts_ub[i], n=Nsamples)
-        probs = binom.proportion_ci(confidence_level = 1 - inverse_confidence)
+        probs = binom.proportion_ci(confidence_level = 1 - inverse_confidence)#/Nsamples)
         high =  probs.high
 
         successor_idxs.append(i)
