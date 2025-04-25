@@ -6,14 +6,14 @@ from models.pendulum import InvertedPendulum
 from models.dintegrator import DoubleIntegrator
 from models.car2d import Robot2D
 
-# matplotlib.use("pgf")
-# matplotlib.rcParams.update({
-#     "pgf.texsystem": "pdflatex",
-#     'font.family': 'serif',
-#     'font.size' : 18,
-#     'text.usetex': True,
-#     'pgf.rcfonts': False,
-# })
+matplotlib.use("pgf")
+matplotlib.rcParams.update({
+    "pgf.texsystem": "pdflatex",
+    'font.family': 'serif',
+    'font.size' : 18,
+    'text.usetex': True,
+    'pgf.rcfonts': False,
+})
 
 policy = {}
 with open('prismPRISM_interval_policy.txt', 'r') as file:
@@ -47,7 +47,7 @@ def parse_list(value):
 
 system = Robot2D()
 config_file = 'models/car2d.conf'
-x = np.array([-9.73, -9.77])
+x = np.array([-6.27, -2.33])
 
 
 config = configparser.ConfigParser()
@@ -85,8 +85,8 @@ plt.colorbar()
 # plt.xlabel(r'$x$', fontsize=16)
 # plt.ylabel(r'$v$', fontsize=16, rotation='horizontal')
 
-plt.xlabel(r'$x$', fontsize=16)
-plt.ylabel(r'$y$', fontsize=16, rotation='horizontal')
+plt.xlabel(r'$x$', fontsize=20)
+plt.ylabel(r'$y$', fontsize=20, rotation='horizontal')
 
 # plt.xlabel(r'$\theta$', fontsize=16)
 # plt.ylabel(r'$\omega$', fontsize=16, rotation='horizontal')
@@ -144,8 +144,8 @@ plt.figure(figsize=[10, 10])
 plt.xlim(stateLowerBound[0], stateUpperBound[0])
 plt.ylim(stateLowerBound[1], stateUpperBound[1])
 
-plt.xlabel(r'$x$', fontsize=16)
-plt.ylabel(r'$y$', fontsize=16, rotation='horizontal')
+plt.xlabel(r'$x$', fontsize=20)
+plt.ylabel(r'$y$', fontsize=20, rotation='horizontal')
 
 # plt.xlabel(r'$x$', fontsize=16)
 # plt.ylabel(r'$v$', fontsize=16, rotation='horizontal')
@@ -153,12 +153,12 @@ plt.ylabel(r'$y$', fontsize=16, rotation='horizontal')
 # plt.xlabel(r'$\theta$', fontsize=16)
 # plt.ylabel(r'$\omega$', fontsize=16, rotation='horizontal')
 
-init = tuple(((x - stateLowerBound) // stateResolution).astype(int))
+init = tuple(np.floor((x - stateLowerBound) / stateResolution).astype(int))
 print(prismIntervalVector[init])
 
 plt.scatter(x[0], x[1], c='black', s=50, marker='s').set_zorder(11)
 voxelResolution = stateResolution / numDivisions
-for _ in range(100):
+for _ in range(200):
     current = init
     state = x
     for i in range(1000):

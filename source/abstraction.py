@@ -114,7 +114,7 @@ def fin(args):
             min_available_freedom = np.min(available_freedom, axis=1)
             refined_policy[min_available_freedom > target_size, :] = sample[1]
             target_size = np.maximum(target_size, min_available_freedom)
-            min_lambda = np.maximum(min_lambda, np.min(available_freedom / stateResolution, axis=1))
+            min_lambda = np.maximum(min_lambda, np.min(available_freedom / (stateResolution / 2), axis=1))
 
         if np.min(min_lambda) > -1 * (Lambda - 1): #-0.5 * np.min(stateResolution):
             #print(f'For every continuous state in {np.array(pre_state_index)}, these exist a control input such that the next state of the nominal system is inside target set of abstract state {abs_state_index}')
